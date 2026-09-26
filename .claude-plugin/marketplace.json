@@ -1,0 +1,15 @@
+{
+  "name": "burnlens",
+  "description": "burnlens: see where your Claude Code tokens burn.",
+  "owner": {
+    "name": "abhayjain"
+  },
+  "plugins": [
+    {
+      "name": "burnlens",
+      "description": "Local dashboard of Claude Code token usage by work type, tool, MCP server, subagent, skill and session.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

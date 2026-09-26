@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>burnlens</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ee;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --bar: #2a78d6; --bar-soft: #cde2fb;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b; --good-ink: #006300;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #222220;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --bar: #3987e5; --bar-soft: #184f95; --good-ink: #0ca30c;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #222220;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --bar: #3987e5; --bar-soft: #184f95; --good-ink: #0ca30c;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h1 span { color: var(--muted); font-weight: 400; }
+.sub { color: var(--ink-2); font-size: 13px; margin-top: 4px; }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--warning); color: #0b0b0b; margin-left: 8px; vertical-align: 2px; }
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px;
+  padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+select, .btn { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+[hidden] { display: none !important; }
+.grid { display: grid; gap: 16px; }
+.kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 16px; }
+.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 2px; }
+.card .desc { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.section { margin-top: 16px; }
+.kpi .label { color: var(--ink-2); font-size: 12.5px; }
+.kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; }
+.kpi .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-2); margin: 4px 0 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.comp-row { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: center; margin: 10px 0; }
+.comp-row .lbl { color: var(--ink-2); font-size: 12.5px; }
+.comp-bar { display: flex; height: 28px; gap: 2px; border-radius: 4px; overflow: hidden; }
+.comp-bar div { height: 100%; min-width: 2px; cursor: default; }
+.comp-bar div:hover { filter: brightness(1.1); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th.sortable { cursor: pointer; } th.sortable:hover { color: var(--ink); }
+th[aria-sort] { color: var(--ink); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surface-2); }
+tr.selected td { background: var(--surface-2); }
+tr.child td { color: var(--ink-2); } tr.child td:first-child { padding-left: 28px; }
+.rank { color: var(--muted); width: 28px; font-variant-numeric: tabular-nums; }
+.name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; word-break: break-all; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); margin-left: 6px; font-family: system-ui, sans-serif; }
+.inbar { position: relative; min-width: 120px; }
+.inbar .track { height: 8px; border-radius: 0 4px 4px 0; background: var(--bar); }
+.hbar-row { display: grid; grid-template-columns: 120px 1fr 90px; gap: 10px; align-items: center; margin: 8px 0; font-size: 13px; }
+.hbar-row .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.hbar-row .track-wrap { height: 18px; display: flex; align-items: center; }
+.hbar-row .track { height: 16px; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
+.hbar-row:hover .track { filter: brightness(1.12); }
+.tabs { display: inline-flex; gap: 2px; border-bottom: 1px solid var(--grid); margin-bottom: 8px; }
+.tabs button { border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink-2); padding: 6px 12px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.insights { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.insight { border-left: 3px solid var(--muted); padding: 10px 12px; background: var(--surface-2); border-radius: 0 8px 8px 0; font-size: 13px; }
+.insight b { display: block; margin-bottom: 3px; font-size: 13.5px; }
+.insight .lvl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.insight.warn { border-left-color: var(--warning); } .insight.bad { border-left-color: var(--critical); } .insight.good { border-left-color: var(--good); } .insight.info { border-left-color: var(--s1); }
+svg text { fill: var(--muted); font-size: 11px; font-family: system-ui, -apple-system, sans-serif; }
+svg .gridline { stroke: var(--grid); stroke-width: 1; }
+svg .baseline { stroke: var(--axis); stroke-width: 1; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 6px 24px rgba(0,0,0,.15); display: none; min-width: 160px; }
+#tip .t { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+#tip .r { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+#tip .r span:first-child { color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+#tip .r strong { font-variant-numeric: tabular-nums; }
+#tip .key { width: 12px; height: 2px; display: inline-block; }
+.empty { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+.scroll { overflow-x: auto; }
+.foot { color: var(--muted); font-size: 12px; margin-top: 24px; line-height: 1.6; }
+@media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .insights { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) { .two, .insights { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hbar-row { grid-template-columns: 96px 1fr 72px; } .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>burnlens <span>· Claude Code token usage</span><span id="demoBadge" class="badge" hidden>DEMO DATA</span></h1>
+      <div class="sub" id="source"></div>
+    </div>
+    <button class="btn" id="themeBtn" title="Toggle theme">◐ Theme</button>
+  </header>
+
+  <div class="filters">
+    <div class="seg" id="range" role="group" aria-label="Date range">
+      <button data-d="1">24h</button><button data-d="7">7d</button><button data-d="30">30d</button><button data-d="90">90d</button><button data-d="0">All</button>
+    </div>
+    <select id="project" aria-label="Project"></select>
+    <select id="model" aria-label="Model"></select>
+    <label style="font-size:13px;color:var(--ink-2)"><input type="checkbox" id="inclAgents" checked> include subagents</label>
+  </div>
+
+  <div class="grid kpis" id="kpis"></div>
+
+  <div class="grid two">
+    <div class="card">
+      <h2>Where the tokens go</h2>
+      <p class="desc">Volume vs. what it costs. Cache reads are most of the volume but cheap; output and cache writes are what you pay for.</p>
+      <div class="legend" id="compLegend"></div>
+      <div id="comp"></div>
+      <div class="scroll"><table id="compTable"></table></div>
+    </div>
+    <div class="card">
+      <h2>Insights</h2>
+      <p class="desc">Rule-based observations on the current filter.</p>
+      <div class="grid" id="insights" style="gap:10px"></div>
+    </div>
+  </div>
+
+  <div class="card section">
+    <div class="card-head">
+      <div><h2>Daily usage</h2><p class="desc" id="dailyDesc">Stacked by token type.</p></div>
+      <div class="seg" id="dailyMetric"><button data-m="usd" aria-pressed="true">Cost</button><button data-m="tok">Tokens</button></div>
+    </div>
+    <div class="legend" id="dailyLegend"></div>
+    <div id="daily"></div>
+  </div>
+
+  <div class="grid two section">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>By work type</h2><p class="desc">Each prompt is classified by what the agent did (files edited, tools used).</p></div>
+        <div class="seg" id="catMetric"><button data-m="usd" aria-pressed="true">Cost</button><button data-m="tok">Tokens</button></div>
+      </div>
+      <div id="cats"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>By model</h2><p class="desc">API-equivalent cost per model, including subagents.</p></div>
+        <div class="seg" id="modelMetric"><button data-m="usd" aria-pressed="true">Cost</button><button data-m="tok">Tokens</button></div>
+      </div>
+      <div id="models"></div>
+    </div>
+  </div>
+
+  <div class="card section">
+    <div class="card-head">
+      <div>
+        <h2>Tools &amp; MCP leaderboard</h2>
+        <p class="desc"><b>Result tokens</b>: what the tool injected into context (≈ estimate). <b>Carried</b>: result tokens × later calls that re-sent them before compaction, the true context load a tool creates.</p>
+      </div>
+      <div class="seg" id="toolMetric"><button data-m="cx" aria-pressed="true">Carried</button><button data-m="rt">Result tokens</button><button data-m="n">Calls</button></div>
+    </div>
+    <div class="tabs" role="tablist" id="toolTabs">
+      <button role="tab" data-t="all" aria-selected="true">All tools</button>
+      <button role="tab" data-t="mcp">MCP servers</button>
+      <button role="tab" data-t="builtin">Built-in</button>
+    </div>
+    <div class="scroll"><table id="toolTable"></table></div>
+  </div>
+
+  <div class="grid two section">
+    <div class="card">
+      <h2>Subagents</h2>
+      <p class="desc">Agent invocations and the tokens their separate contexts consumed.</p>
+      <div class="scroll"><table id="agentTable"></table></div>
+    </div>
+    <div class="card">
+      <h2>Skills</h2>
+      <p class="desc">Skills loaded and the instruction tokens each added to context.</p>
+      <div class="scroll"><table id="skillTable"></table></div>
+    </div>
+  </div>
+
+  <div class="card section">
+    <h2>Sessions</h2>
+    <p class="desc">Click a session to see its context grow call by call. Drops are compactions.</p>
+    <div id="sessionChart"></div>
+    <div class="scroll"><table id="sessionTable"></table></div>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+// ---------- utilities ----------
+const $ = (s) => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v != null) n.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return n;
+};
+const SVGNS = "http://www.w3.org/2000/svg";
+const sv = (tag, attrs = {}) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+const fmtTok = (n) => n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k" : String(Math.round(n));
+const fmtUsd = (n) => n >= 1000 ? "$" + (n / 1000).toFixed(1) + "k" : n >= 100 ? "$" + n.toFixed(0) : n >= 1 ? "$" + n.toFixed(2) : "$" + n.toFixed(3);
+const fmtPct = (x) => (x * 100).toFixed(x < 0.1 ? 1 : 0) + "%";
+const fmtInt = (n) => n.toLocaleString();
+const sum = (a, f) => a.reduce((s, x) => s + (f(x) || 0), 0);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const tot = (c) => c.i + c.o + c.cr + c.cw;
+
+// Token types: fixed slot per entity (never by rank).
+const TYPES = [
+  { k: "cr", label: "Cache read", color: "--s1" },
+  { k: "cw", label: "Cache write", color: "--s2" },
+  { k: "i", label: "Uncached input", color: "--s3" },
+  { k: "o", label: "Output", color: "--s4" },
+];
+
+// Per-call cost split by token type using the call's own rates.
+const PRICES = { "claude-fable-5-1": [10, 50, .25], "claude-mythos-5-1": [10, 50, .25], "claude-fable-5": [10, 50, 1], "claude-mythos-5": [10, 50, 1],
+  "claude-opus-5-5": [4, 20, .2], "claude-opus-5": [5, 25, .5], "claude-opus-4": [5, 25, .5], "claude-sonnet-5": [2, 10, .2],
+  "claude-sonnet-4": [3, 15, .3], "claude-haiku-4-5": [1, 5, .1] };
+function rates(m) { let best = null; for (const p in PRICES) if (m && m.replace(/^(us\.)?anthropic\./, "").startsWith(p) && (!best || p.length > best.length)) best = p; return best ? PRICES[best] : null; }
+function splitCost(c) {
+  const r = rates(c.m); if (!r || c.usd == null) return { cr: 0, cw: 0, i: 0, o: 0 };
+  const parts = { cr: c.cr * r[2], i: c.i * r[0], o: c.o * r[1] };
+  parts.cw = Math.max(0, c.usd * 1e6 - parts.cr - parts.i - parts.o);
+  for (const k in parts) parts[k] /= 1e6;
+  return parts;
+}
+
+// ---------- tooltip ----------
+const tip = $("#tip");
+function showTip(ev, title, rows) {
+  tip.replaceChildren(el("div", { class: "t" }, title),
+    ...rows.map(([label, value, color]) => el("div", { class: "r" },
+      el("span", {}, color ? el("i", { class: "key", style: `background:${color}` }) : null, label), el("strong", {}, value))));
+  tip.style.display = "block";
+  moveTip(ev);
+}
+function moveTip(ev) {
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => (tip.style.display = "none");
+function hover(node, fn) { node.addEventListener("pointermove", (e) => { const [t, r] = fn(); showTip(e, t, r); }); node.addEventListener("pointerleave", hideTip); }
+
+// ---------- state & filtering ----------
+const state = { days: 30, project: "", model: "", agents: true, dailyM: "usd", catM: "usd", modelM: "usd", toolM: "cx", toolTab: "all",
+  sessSort: "usd", sessDir: -1, session: null, expanded: new Set(), toolsAll: false };
+try { const t = localStorage.getItem("burnlens-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+const maxTs = DATA.calls.reduce((m, c) => (c.ts && c.ts > m ? c.ts : m), "");
+function view() {
+  const anchor = maxTs ? new Date(maxTs).getTime() : Date.now();
+  const cutoff = state.days ? new Date(anchor - state.days * 864e5).toISOString() : "";
+  const okS = (sid) => !state.project || (DATA.sessions[sid] || {}).project === state.project;
+  const okT = (x) => !cutoff || (x.ts && x.ts >= cutoff);
+  const okA = (x) => state.agents || !x.a;
+  const calls = DATA.calls.filter((c) => okT(c) && okS(c.s) && okA(c) && (!state.model || c.m === state.model));
+  const tools = DATA.tools.filter((t) => okT(t) && okS(t.s) && okA(t));
+  const agents = DATA.agents.filter((a) => okT(a) && okS(a.s));
+  return { calls, tools, agents, cutoff };
+}
+
+// ---------- sections ----------
+function kpis(v) {
+  const c = v.calls, T = sum(c, tot), usd = sum(c, (x) => x.usd), inp = sum(c, (x) => x.i + x.cr + x.cw), cr = sum(c, (x) => x.cr);
+  const outUsd = sum(c, (x) => splitCost(x).o);
+  const sess = new Set(c.map((x) => x.s)).size, main = c.filter((x) => !x.a);
+  const tiles = [
+    ["Total tokens", fmtTok(T), `${fmtInt(c.length)} API calls`],
+    ["API-equivalent cost", fmtUsd(usd), sess ? `${fmtUsd(usd / sess)} per session` : ""],
+    ["Cache hit rate", inp ? fmtPct(cr / inp) : "–", "of input served from cache"],
+    ["Output share of cost", usd ? fmtPct(outUsd / usd) : "–", `${fmtTok(sum(c, (x) => x.o))} output tokens`],
+    ["Sessions", fmtInt(sess), `${new Set(c.map((x) => (DATA.sessions[x.s] || {}).project)).size} projects`],
+    ["Avg context / call", main.length ? fmtTok(sum(main, (x) => x.i + x.cr + x.cw) / main.length) : "–", "tokens re-sent each turn"],
+  ];
+  $("#kpis").replaceChildren(...tiles.map(([l, val, n]) => el("div", { class: "card kpi" }, el("div", { class: "label" }, l), el("div", { class: "value" }, val), el("div", { class: "note" }, n))));
+}
+
+function composition(v) {
+  const c = v.calls;
+  const vol = Object.fromEntries(TYPES.map((t) => [t.k, sum(c, (x) => x[t.k])]));
+  const money = { cr: 0, cw: 0, i: 0, o: 0 };
+  for (const x of c) { const p = splitCost(x); for (const k in p) money[k] += p[k]; }
+  const V = sum(TYPES, (t) => vol[t.k]) || 1, M = sum(TYPES, (t) => money[t.k]) || 1;
+  $("#compLegend").replaceChildren(...TYPES.map((t) => el("span", {}, el("i", { style: `background:var(${t.color})` }), t.label)));
+  const row = (label, vals, total, fmt) => {
+    const bar = el("div", { class: "comp-bar" });
+    for (const t of TYPES) {
+      if (!vals[t.k]) continue;
+      const seg = el("div", { style: `flex:${vals[t.k] / total} 1 0;background:var(${t.color})` });
+      hover(seg, () => [label + " · " + t.label, [[fmt(vals[t.k]), fmtPct(vals[t.k] / total), css(t.color)]]]);
+      bar.append(seg);
+    }
+    return el("div", { class: "comp-row" }, el("div", { class: "lbl" }, label), bar);
+  };
+  $("#comp").replaceChildren(row("Tokens", vol, V, fmtTok), row("Cost", money, M, fmtUsd));
+  $("#compTable").replaceChildren(
+    el("tr", {}, el("th", {}, "Type"), el("th", { class: "num" }, "Tokens"), el("th", { class: "num" }, "% vol"), el("th", { class: "num" }, "Cost"), el("th", { class: "num" }, "% cost")),
+    ...TYPES.map((t) => el("tr", {}, el("td", {}, el("i", { style: `display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:var(${t.color})` }), t.label),
+      el("td", { class: "num" }, fmtTok(vol[t.k])), el("td", { class: "num" }, fmtPct(vol[t.k] / V)),
+      el("td", { class: "num" }, fmtUsd(money[t.k])), el("td", { class: "num" }, fmtPct(money[t.k] / M)))));
+}
+
+function daily(v) {
+  const m = state.dailyM, byDay = new Map();
+  for (const c of v.calls) {
+    if (!c.ts) continue;
+    const d = c.ts.slice(0, 10);
+    const e = byDay.get(d) || { cr: 0, cw: 0, i: 0, o: 0 };
+    const vals = m === "usd" ? splitCost(c) : c;
+    for (const t of TYPES) e[t.k] += vals[t.k];
+    byDay.set(d, e);
+  }
+  const keys = [...byDay.keys()].sort();
+  const box = $("#daily");
+  $("#dailyLegend").replaceChildren(...TYPES.map((t) => el("span", {}, el("i", { style: `background:var(${t.color})` }), t.label)));
+  if (!keys.length) return box.replaceChildren(el("div", { class: "empty" }, "No data in range"));
+  // fill gaps so the x-axis is continuous time
+  const days = [];
+  for (let d = new Date(keys[0] + "T00:00:00Z"); d <= new Date(keys.at(-1) + "T00:00:00Z"); d = new Date(d.getTime() + 864e5)) days.push(d.toISOString().slice(0, 10));
+  const W = Math.max(box.clientWidth, 300), H = 240, L = 52, R = 8, Tp = 8, B = 26;
+  const totals = days.map((d) => { const e = byDay.get(d); return e ? sum(TYPES, (t) => e[t.k]) : 0; });
+  const max = niceMax(Math.max(...totals));
+  const svg = sv("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  const y = (val) => Tp + (H - Tp - B) * (1 - val / max);
+  for (let i = 0; i <= 4; i++) {
+    const val = (max / 4) * i, yy = y(val);
+    svg.append(sv("line", { x1: L, x2: W - R, y1: yy, y2: yy, class: i ? "gridline" : "baseline" }));
+    const tx = sv("text", { x: L - 8, y: yy + 4, "text-anchor": "end" }); tx.textContent = m === "usd" ? fmtUsd(val) : fmtTok(val); svg.append(tx);
+  }
+  const bw = (W - L - R) / days.length, gap = Math.min(6, bw * 0.25), w = Math.max(1, bw - gap);
+  const every = Math.ceil(days.length / Math.max(2, Math.floor((W - L) / 70)));
+  days.forEach((d, i) => {
+    const x = L + i * bw + gap / 2, e = byDay.get(d);
+    if (i % every === 0) { const tx = sv("text", { x: x + w / 2, y: H - 8, "text-anchor": "middle" }); tx.textContent = new Date(d + "T00:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }); svg.append(tx); }
+    if (!e) return;
+    let acc = 0; const segs = TYPES.filter((t) => e[t.k] > 0);
+    segs.forEach((t, j) => {
+      const y0 = y(acc), y1 = y(acc + e[t.k]); acc += e[t.k];
+      const hgt = Math.max(0, y0 - y1 - (j < segs.length - 1 ? 1 : 0));
+      if (hgt <= 0) return;
+      const top = j === segs.length - 1;
+      svg.append(sv("path", { d: roundTop(x, y0 - hgt, w, hgt, top ? Math.min(4, w / 2) : 0), fill: css(t.color) }));
+    });
+    const hit = sv("rect", { x: L + i * bw, y: Tp, width: bw, height: H - Tp - B, fill: "transparent" });
+    hover(hit, () => [new Date(d + "T00:00:00Z").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }),
+      [...TYPES.slice().reverse().map((t) => [t.label, m === "usd" ? fmtUsd(e[t.k]) : fmtTok(e[t.k]), css(t.color)]), ["Total", m === "usd" ? fmtUsd(totals[i]) : fmtTok(totals[i])]]]);
+    svg.append(hit);
+  });
+  box.replaceChildren(svg);
+  $("#dailyDesc").textContent = m === "usd" ? "API-equivalent cost per day, stacked by token type." : "Tokens per day, stacked by token type.";
+}
+function roundTop(x, y, w, h, r) { r = Math.min(r, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; }
+function niceMax(v) { if (!v) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
+
+function hbars(container, rows, metric) {
+  const box = $(container);
+  if (!rows.length) return box.replaceChildren(el("div", { class: "empty" }, "No data in range"));
+  const max = Math.max(...rows.map((r) => r[metric])) || 1, total = sum(rows, (r) => r[metric]) || 1;
+  box.replaceChildren(...rows.map((r) => {
+    const row = el("div", { class: "hbar-row" }, el("div", {}, r.label),
+      el("div", { class: "track-wrap" }, el("div", { class: "track", style: `width:${(r[metric] / max) * 100}%` })),
+      el("div", { class: "v" }, metric === "usd" ? fmtUsd(r.usd) : fmtTok(r.tok), el("span", { style: "color:var(--muted);margin-left:6px" }, fmtPct(r[metric] / total))));
+    hover(row, () => [r.label, [["Cost", fmtUsd(r.usd)], ["Tokens", fmtTok(r.tok)], ["API calls", fmtInt(r.n)], ...(r.extra || [])]]);
+    return row;
+  }));
+}
+function groupCalls(calls, key) {
+  const g = new Map();
+  for (const c of calls) { const k = key(c) || "unknown"; const e = g.get(k) || { label: k, usd: 0, tok: 0, n: 0, o: 0 }; e.usd += c.usd || 0; e.tok += tot(c); e.n++; e.o += c.o; g.set(k, e); }
+  return [...g.values()];
+}
+function categories(v) {
+  const rows = groupCalls(v.calls, (c) => c.c).sort((a, b) => b[state.catM] - a[state.catM]);
+  rows.forEach((r) => (r.extra = [["Output tokens", fmtTok(r.o)]]));
+  hbars("#cats", rows, state.catM);
+}
+function models(v) {
+  const rows = groupCalls(v.calls, (c) => c.m).sort((a, b) => b[state.modelM] - a[state.modelM]);
+  rows.forEach((r) => (r.label = r.label.replace(/^claude-/, "")));
+  hbars("#models", rows, state.modelM);
+}
+
+function toolAgg(list, key) {
+  const g = new Map();
+  for (const t of list) { const k = key(t); const e = g.get(k) || { name: k, n: 0, rt: 0, cx: 0, err: 0, srv: t.srv }; e.n++; e.rt += t.rt || 0; e.cx += t.cx || 0; e.err += t.err ? 1 : 0; g.set(k, e); }
+  return [...g.values()];
+}
+function toolsTable(v) {
+  const M = state.toolM, tab = state.toolTab, table = $("#toolTable");
+  const list = v.tools.filter((t) => tab === "all" || (tab === "mcp" ? t.srv : !t.srv));
+  const head = el("tr", {}, el("th", { class: "rank" }, "#"), el("th", {}, tab === "mcp" ? "Server / tool" : "Tool"), el("th", { class: "hide-sm" }, ""),
+    el("th", { class: "num" }, "Calls"), el("th", { class: "num" }, "Result tok"), el("th", { class: "num hide-sm" }, "Avg / call"), el("th", { class: "num" }, "Carried"), el("th", { class: "num hide-sm" }, "Errors"));
+  if (!list.length) return table.replaceChildren(head, el("tr", {}, el("td", { colspan: 8, class: "empty" }, tab === "mcp" ? "No MCP tool calls in range" : "No tool calls in range")));
+  let rows = tab === "mcp" ? toolAgg(list, (t) => t.srv) : toolAgg(list, (t) => t.n);
+  rows.sort((a, b) => b[M] - a[M]);
+  const max = Math.max(...rows.map((r) => r[M])) || 1;
+  const mk = (r, i, child) => {
+    const isSrv = tab === "mcp" && !child;
+    const label = el("span", { class: "name" }, child ? r.name : isSrv ? r.name : r.name.startsWith("mcp__") ? r.name.split("__").slice(2).join("__") : r.name);
+    if (!child && !isSrv && r.srv) label.append(el("span", { class: "tag" }, "mcp:" + r.srv));
+    if (isSrv) label.prepend((state.expanded.has(r.name) ? "▾ " : "▸ "));
+    const tr = el("tr", { class: (isSrv ? "clickable " : "") + (child ? "child" : "") },
+      el("td", { class: "rank" }, child ? "" : i + 1), el("td", {}, label),
+      el("td", { class: "inbar hide-sm" }, el("div", { class: "track", style: `width:${(r[M] / max) * 100}%;${child ? "background:var(--bar-soft)" : ""}` })),
+      el("td", { class: "num" }, fmtInt(r.n)), el("td", { class: "num" }, fmtTok(r.rt)), el("td", { class: "num hide-sm" }, fmtTok(r.rt / r.n)),
+      el("td", { class: "num" }, fmtTok(r.cx)), el("td", { class: "num hide-sm" }, r.err ? fmtInt(r.err) : "–"));
+    if (isSrv) tr.addEventListener("click", () => { state.expanded.has(r.name) ? state.expanded.delete(r.name) : state.expanded.add(r.name); toolsTable(view()); });
+    return tr;
+  };
+  const out = [head];
+  const shown = state.toolsAll ? rows : rows.slice(0, 15);
+  shown.forEach((r, i) => {
+    out.push(mk(r, i, false));
+    if (tab === "mcp" && state.expanded.has(r.name)) {
+      toolAgg(list.filter((t) => t.srv === r.name), (t) => t.t).sort((a, b) => b[M] - a[M]).forEach((c) => out.push(mk(c, 0, true)));
+    }
+  });
+  if (rows.length > 15) {
+    const more = el("button", { class: "btn", style: "margin-top:10px" }, state.toolsAll ? "Show top 15" : `Show all ${rows.length}`);
+    more.addEventListener("click", () => { state.toolsAll = !state.toolsAll; toolsTable(view()); });
+    out.push(el("tr", {}, el("td", { colspan: 8, style: "border:0" }, more)));
+  }
+  table.replaceChildren(...out);
+}
+
+function agentsTable(v) {
+  const g = new Map();
+  for (const a of v.agents) { const e = g.get(a.type) || { type: a.type, n: 0, tok: 0, usd: 0 }; e.n++; e.tok += a.tokens || 0; g.set(a.type, e); }
+  // Prefer measured subagent calls (sidechain transcripts) when present.
+  for (const c of v.calls) if (c.a) { const e = g.get(c.a) || { type: c.a, n: 0, tok: 0, usd: 0 }; e.usd += c.usd || 0; e.callTok = (e.callTok || 0) + tot(c); g.set(c.a, e); }
+  const rows = [...g.values()].map((e) => ({ ...e, tok: e.callTok || e.tok })).sort((a, b) => b.tok - a.tok);
+  const allTok = sum(v.calls, tot) || 1;
+  const head = el("tr", {}, el("th", {}, "Agent type"), el("th", { class: "num" }, "Runs"), el("th", { class: "num" }, "Tokens"), el("th", { class: "num" }, "Tok / run"), el("th", { class: "num" }, "Cost"), el("th", { class: "num" }, "% all"));
+  $("#agentTable").replaceChildren(head, ...(rows.length ? rows.map((r) => el("tr", {}, el("td", { class: "name" }, r.type), el("td", { class: "num" }, r.n || "–"),
+    el("td", { class: "num" }, fmtTok(r.tok)), el("td", { class: "num" }, r.n ? fmtTok(r.tok / r.n) : "–"), el("td", { class: "num" }, r.usd ? fmtUsd(r.usd) : "–"), el("td", { class: "num" }, fmtPct(r.tok / allTok))))
+    : [el("tr", {}, el("td", { colspan: 6, class: "empty" }, "No subagents in range"))]));
+}
+function skillsTable(v) {
+  const rows = toolAgg(v.tools.filter((t) => t.n === "Skill"), (t) => t.skill || "unknown").sort((a, b) => b.cx - a.cx);
+  const head = el("tr", {}, el("th", {}, "Skill"), el("th", { class: "num" }, "Loads"), el("th", { class: "num" }, "Instr. tokens"), el("th", { class: "num" }, "Carried"));
+  $("#skillTable").replaceChildren(head, ...(rows.length ? rows.map((r) => el("tr", {}, el("td", { class: "name" }, r.name), el("td", { class: "num" }, fmtInt(r.n)), el("td", { class: "num" }, fmtTok(r.rt)), el("td", { class: "num" }, fmtTok(r.cx))))
+    : [el("tr", {}, el("td", { colspan: 4, class: "empty" }, "No skills used in range"))]));
+}
+
+function sessionRows(v) {
+  const g = new Map();
+  for (const c of v.calls) {
+    const e = g.get(c.s) || { s: c.s, usd: 0, tok: 0, n: 0, peak: 0, cr: 0, inp: 0, cats: {} };
+    e.usd += c.usd || 0; e.tok += tot(c); e.n++; e.cr += c.cr; e.inp += c.i + c.cr + c.cw;
+    if (!c.a) e.peak = Math.max(e.peak, c.i + c.cr + c.cw);
+    e.cats[c.c] = (e.cats[c.c] || 0) + tot(c);
+    g.set(c.s, e);
+  }
+  return [...g.values()].map((e) => ({ ...e, hit: e.inp ? e.cr / e.inp : 0, cat: Object.entries(e.cats).sort((a, b) => b[1] - a[1])[0]?.[0] || "", comp: (DATA.compactions[e.s] || []).length,
+    title: (DATA.sessions[e.s] || {}).title || e.s, project: (DATA.sessions[e.s] || {}).project || "", start: (DATA.sessions[e.s] || {}).start || "" }));
+}
+function sessionsTable(v) {
+  const rows = sessionRows(v), k = state.sessSort, d = state.sessDir;
+  rows.sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * d);
+  if (!state.session || !rows.some((r) => r.s === state.session)) state.session = rows.slice().sort((a, b) => b.usd - a.usd)[0]?.s || null;
+  const cols = [["title", "Session", ""], ["project", "Project", "hide-sm"], ["cat", "Main work", "hide-sm"], ["start", "Started", "hide-sm"], ["n", "Calls", "num"], ["peak", "Peak ctx", "num"], ["hit", "Cache hit", "num hide-sm"], ["comp", "Compactions", "num hide-sm"], ["usd", "Cost", "num"]];
+  const head = el("tr", {}, ...cols.map(([key, label, cls]) => {
+    const th = el("th", { class: "sortable " + cls, "aria-sort": key === k ? (d > 0 ? "ascending" : "descending") : null }, label + (key === k ? (d > 0 ? " ↑" : " ↓") : ""));
+    th.addEventListener("click", () => { state.sessDir = state.sessSort === key ? -state.sessDir : -1; state.sessSort = key; sessionsTable(view()); });
+    return th;
+  }));
+  const body = rows.slice(0, 50).map((r) => {
+    const tr = el("tr", { class: "clickable" + (r.s === state.session ? " selected" : "") },
+      el("td", {}, r.title.length > 60 ? r.title.slice(0, 58) + "…" : r.title), el("td", { class: "hide-sm" }, r.project), el("td", { class: "hide-sm" }, r.cat),
+      el("td", { class: "hide-sm", style: "white-space:nowrap" }, r.start ? new Date(r.start).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""),
+      el("td", { class: "num" }, fmtInt(r.n)), el("td", { class: "num" }, fmtTok(r.peak)), el("td", { class: "num hide-sm" }, fmtPct(r.hit)), el("td", { class: "num hide-sm" }, r.comp || "–"), el("td", { class: "num" }, fmtUsd(r.usd)));
+    tr.addEventListener("click", () => { state.session = r.s; sessionsTable(view()); });
+    return tr;
+  });
+  $("#sessionTable").replaceChildren(head, ...body);
+  sessionChart(v);
+}
+function sessionChart(v) {
+  const box = $("#sessionChart");
+  const calls = v.calls.filter((c) => c.s === state.session && !c.a).sort((a, b) => (a.ts > b.ts ? 1 : -1));
+  if (calls.length < 2) return box.replaceChildren(el("div", { class: "empty" }, calls.length ? "Only one call in this session." : "Select a session."));
+  const W = Math.max(box.clientWidth, 300), H = 200, L = 52, R = 12, Tp = 24, B = 24;
+  const ctx = calls.map((c) => c.i + c.cr + c.cw), max = niceMax(Math.max(...ctx));
+  const x = (i) => L + ((W - L - R) * i) / (calls.length - 1), y = (val) => Tp + (H - Tp - B) * (1 - val / max);
+  const svg = sv("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  const title = sv("text", { x: L, y: 12, style: "fill:var(--ink-2);font-size:12px" });
+  title.textContent = `Context per call · ${(DATA.sessions[state.session] || {}).title || state.session}`.slice(0, 110);
+  svg.append(title);
+  for (let i = 0; i <= 4; i++) { const val = (max / 4) * i, yy = y(val); svg.append(sv("line", { x1: L, x2: W - R, y1: yy, y2: yy, class: i ? "gridline" : "baseline" })); const tx = sv("text", { x: L - 8, y: yy + 4, "text-anchor": "end" }); tx.textContent = fmtTok(val); svg.append(tx); }
+  const pts = ctx.map((c, i) => `${x(i)},${y(c)}`).join(" ");
+  const area = sv("polygon", { points: `${x(0)},${y(0)} ${pts} ${x(ctx.length - 1)},${y(0)}`, fill: css("--s1"), opacity: 0.12 });
+  svg.append(area, sv("polyline", { points: pts, fill: "none", stroke: css("--s1"), "stroke-width": 2, "stroke-linejoin": "round" }));
+  const lx = sv("text", { x: W - R, y: H - 8, "text-anchor": "end" }); lx.textContent = `call ${calls.length}`; svg.append(lx);
+  const fx = sv("text", { x: L, y: H - 8 }); fx.textContent = "call 1"; svg.append(fx);
+  const cross = sv("line", { y1: Tp, y2: H - B, stroke: css("--axis"), "stroke-width": 1, visibility: "hidden" });
+  const dot = sv("circle", { r: 4, fill: css("--s1"), stroke: css("--surface"), "stroke-width": 2, visibility: "hidden" });
+  svg.append(cross, dot);
+  const hit = sv("rect", { x: L, y: Tp, width: W - L - R, height: H - Tp - B, fill: "transparent" });
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), i = Math.max(0, Math.min(calls.length - 1, Math.round(((e.clientX - r.left - L) / (W - L - R)) * (calls.length - 1))));
+    const c = calls[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(ctx[i])); dot.setAttribute("visibility", "visible");
+    showTip(e, `Call ${i + 1} · ${c.c || ""}`, [["Context", fmtTok(ctx[i])], ["Cache read", fmtTok(c.cr), css("--s1")], ["Cache write", fmtTok(c.cw), css("--s2")], ["Uncached input", fmtTok(c.i), css("--s3")], ["Output", fmtTok(c.o), css("--s4")], ["Cost", c.usd != null ? fmtUsd(c.usd) : "–"]]);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+  svg.append(hit);
+  box.replaceChildren(svg);
+}
+
+function insights(v) {
+  const c = v.calls, out = [];
+  const add = (lvl, title, body) => out.push({ lvl, title, body });
+  const inp = sum(c, (x) => x.i + x.cr + x.cw), cr = sum(c, (x) => x.cr), usd = sum(c, (x) => x.usd);
+  if (inp) {
+    const h = cr / inp;
+    if (h < 0.8) add("warn", `Cache hit rate is ${fmtPct(h)}`, "Aim for 90%+. Low hit rates usually mean long pauses between turns (the cache expires), switching models mid-session, or editing CLAUDE.md or MCP config mid-session.");
+    else add("good", `Cache hit rate is ${fmtPct(h)}`, `Caching turned ${fmtTok(cr)} re-sent tokens into cheap reads.`);
+  }
+  const cw$ = sum(c, (x) => splitCost(x).cw);
+  if (usd && cw$ / usd > 0.3) add("warn", `Cache writes are ${fmtPct(cw$ / usd)} of cost`, "Each new or changed prefix is written at 1.25× (5-min) or 2× (1-hour) input price. Many short sessions or frequent cache expiry push this up.");
+  const tools = toolAgg(v.tools, (t) => t.n).sort((a, b) => b.cx - a.cx), allCx = sum(tools, (t) => t.cx);
+  if (tools[0] && allCx) add("info", `${tools[0].name.replace(/^mcp__/, "")} drives ${fmtPct(tools[0].cx / allCx)} of carried context`, `${fmtInt(tools[0].n)} calls averaging ${fmtTok(tools[0].rt / tools[0].n)} tokens per result, re-sent ${fmtTok(tools[0].cx)} tokens in total. Narrower queries, line ranges or fewer loads shrink this.`);
+  const heavy = tools.filter((t) => t.n >= 2 && t.rt / t.n > 8000).sort((a, b) => b.rt / b.n - a.rt / a.n);
+  if (heavy.length) add("warn", `${heavy.length} tool${heavy.length > 1 ? "s return" : " returns"} 8k+ tokens per call`, heavy.slice(0, 3).map((t) => `${t.name.replace(/^mcp__/, "")} (${fmtTok(t.rt / t.n)})`).join(", ") + ". Large payloads stay in context for every later turn.");
+  const srv = toolAgg(v.tools.filter((t) => t.srv), (t) => t.srv).sort((a, b) => b.cx - a.cx);
+  if (srv.length) add("info", `MCP servers: ${fmtPct(sum(srv, (s) => s.cx) / (allCx || 1))} of carried context`, `Top server: ${srv[0].name} (${fmtTok(srv[0].cx)}). Servers you rarely call still cost schema tokens on every request, so disable unused ones.`);
+  const s = sessionRows(v), big = s.filter((r) => r.peak > 150000);
+  if (big.length) add("warn", `${big.length} session${big.length > 1 ? "s" : ""} passed 150k context`, "Long sessions re-send everything on each turn, so cost grows roughly with the square of turn count. Start fresh sessions per task, or /compact earlier.");
+  const agentTok = sum(c.filter((x) => x.a), tot), T = sum(c, tot);
+  if (agentTok) add("info", `Subagents used ${fmtPct(agentTok / T)} of tokens`, "Subagents keep exploration out of the main context. Assigning cheaper models to Explore-style agents lowers cost further.");
+  const out$ = sum(c, (x) => splitCost(x).o);
+  if (usd) add("info", `Output is ${fmtPct(sum(c, (x) => x.o) / (T || 1))} of tokens but ${fmtPct(out$ / usd)} of cost`, "Output, including thinking, is priced at 5× input. Lower effort on routine tasks is the direct lever.");
+  const errs = sum(v.tools, (t) => (t.err ? 1 : 0));
+  if (v.tools.length && errs / v.tools.length > 0.05) add("bad", `${fmtPct(errs / v.tools.length)} of tool calls errored`, "Each failed call still adds its error output to context and costs a retry turn.");
+  const LV = { good: "Good", warn: "Watch", bad: "Problem", info: "Insight" };
+  $("#insights").replaceChildren(...(out.length ? out.slice(0, 6) : [{ lvl: "info", title: "Not enough data yet", body: "Use Claude Code for a while, then re-run burnlens." }])
+    .map((i) => el("div", { class: "insight " + i.lvl }, el("div", { class: "lvl", style: "color:var(--muted)" }, (i.lvl === "good" ? "✓ " : i.lvl === "info" ? "ℹ " : "⚠ ") + LV[i.lvl]), el("b", {}, i.title), i.body)));
+}
+
+// ---------- wiring ----------
+function render() {
+  const v = view();
+  kpis(v); composition(v); insights(v); daily(v); categories(v); models(v); toolsTable(v); agentsTable(v); skillsTable(v); sessionsTable(v);
+}
+function seg(id, key, parse = (x) => x) {
+  const box = $(id);
+  const sync = () => box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(parse(Object.values(b.dataset)[0]) === state[key])));
+  box.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state[key] = parse(Object.values(b.dataset)[0]); sync(); render(); });
+  sync();
+}
+function init() {
+  $("#demoBadge").hidden = !DATA.demo;
+  $("#source").textContent = DATA.demo ? "Synthetic demo data: run without --demo to see your own usage." : `Source: ${DATA.source} · ${DATA.files} transcript files · last activity ${maxTs ? new Date(maxTs).toLocaleString() : "–"}`;
+  const projects = [...new Set(Object.values(DATA.sessions).map((s) => s.project).filter(Boolean))].sort();
+  $("#project").replaceChildren(el("option", { value: "" }, "All projects"), ...projects.map((p) => el("option", { value: p }, p)));
+  const ms = [...new Set(DATA.calls.map((c) => c.m))].sort();
+  $("#model").replaceChildren(el("option", { value: "" }, "All models"), ...ms.map((m) => el("option", { value: m }, m.replace(/^claude-/, ""))));
+  $("#project").addEventListener("change", (e) => { state.project = e.target.value; render(); });
+  $("#model").addEventListener("change", (e) => { state.model = e.target.value; render(); });
+  $("#inclAgents").addEventListener("change", (e) => { state.agents = e.target.checked; render(); });
+  seg("#range", "days", Number); seg("#dailyMetric", "dailyM"); seg("#catMetric", "catM"); seg("#modelMetric", "modelM"); seg("#toolMetric", "toolM");
+  $("#toolTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.toolTab = b.dataset.t; $("#toolTabs").querySelectorAll("button").forEach((x) => x.setAttribute("aria-selected", String(x === b))); render(); });
+  $("#themeBtn").addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("burnlens-theme", next); } catch (e) {}
+    render();
+  });
+  $("#foot").textContent = `burnlens v${DATA.version || "dev"}. ` + "Costs are API-equivalent at Anthropic list prices; subscription plans are not billed per token. Tool result tokens are estimated from text length (~3.6 chars per token); API usage fields are exact. Work types are heuristic. burnlens reads local transcripts only; nothing leaves your machine.";
+  let t; addEventListener("resize", () => { clearTimeout(t); t = setTimeout(render, 120); });
+  render();
+}
+init();
+</script>
+</body>
+</html>
