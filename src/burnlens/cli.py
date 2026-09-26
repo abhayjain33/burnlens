@@ -58,6 +58,12 @@ def summary(data):
     if servers:
         lines.append("MCP servers by carried context: " + ", ".join(
             f"{s} ({_tok(v)})" for s, v in sorted(servers.items(), key=lambda kv: -kv[1])[:5]))
+    if not data.get("demo"):
+        stamps = sorted(c["ts"] for c in calls if c.get("ts"))
+        if stamps and (len(data["sessions"]) < 10 or stamps[-1][:10] == stamps[0][:10]):
+            ret = data.get("retentionDays", 30)
+            lines.append(f"Note: limited history ({len(data['sessions'])} sessions since {stamps[0][:10]}); "
+                         f"Claude Code keeps transcripts for {ret} days (cleanupPeriodDays).")
     return "\n".join(lines)
 
 

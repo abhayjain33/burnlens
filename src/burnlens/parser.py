@@ -17,9 +17,25 @@ CHARS_PER_TOKEN = 3.6  # rough estimate for tool-result text; real usage fields 
 IMAGE_TOKENS = 1600
 
 
+DEFAULT_RETENTION_DAYS = 30  # Claude Code's cleanupPeriodDays default
+
+
+def config_dir():
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+
+
 def default_root():
-    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-    return os.path.join(base, "projects")
+    return os.path.join(config_dir(), "projects")
+
+
+def retention_days():
+    """cleanupPeriodDays from user settings: how long Claude Code keeps transcripts."""
+    try:
+        with open(os.path.join(config_dir(), "settings.json")) as f:
+            days = json.load(f).get("cleanupPeriodDays")
+        return int(days) if days is not None else DEFAULT_RETENTION_DAYS
+    except (OSError, ValueError, TypeError, AttributeError):
+        return DEFAULT_RETENTION_DAYS
 
 
 def _est_tokens(content):
@@ -260,6 +276,7 @@ def load(root=None, redact=False):
         "source": root,
         "files": len(files),
         "demo": False,
+        "retentionDays": retention_days(),
         "sessions": sessions,
         "calls": calls,
         "tools": tools,

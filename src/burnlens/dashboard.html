@@ -53,6 +53,10 @@ h1 span { color: var(--muted); font-weight: 400; }
 select, .btn { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
   border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
 [hidden] { display: none !important; }
+.notice { border: 1px solid var(--border); border-left: 3px solid var(--warning); background: var(--surface); border-radius: 0 10px 10px 0;
+  padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--ink-2); }
+.notice b { color: var(--ink); }
+.notice code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .grid { display: grid; gap: 16px; }
 .kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 16px; }
 .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -135,6 +139,7 @@ svg .baseline { stroke: var(--axis); stroke-width: 1; }
     <label style="font-size:13px;color:var(--ink-2)"><input type="checkbox" id="inclAgents" checked> include subagents</label>
   </div>
 
+  <div class="notice" id="notice" hidden></div>
   <div class="grid kpis" id="kpis"></div>
 
   <div class="grid two">
@@ -592,7 +597,22 @@ function seg(id, key, parse = (x) => x) {
 }
 function init() {
   $("#demoBadge").hidden = !DATA.demo;
-  $("#source").textContent = DATA.demo ? "Synthetic demo data: run without --demo to see your own usage." : `Source: ${DATA.source} · ${DATA.files} transcript files · last activity ${maxTs ? new Date(maxTs).toLocaleString() : "–"}`;
+  const minTs = DATA.calls.reduce((m, c) => (c.ts && (!m || c.ts < m) ? c.ts : m), "");
+  const nSess = Object.keys(DATA.sessions).length;
+  const spanDays = minTs ? Math.max(1, Math.ceil((new Date(maxTs) - new Date(minTs)) / 864e5)) : 0;
+  const since = minTs ? new Date(minTs).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "–";
+  $("#source").textContent = DATA.demo ? "Synthetic demo data: run without --demo to see your own usage."
+    : `${nSess} session${nSess === 1 ? "" : "s"} since ${since} · ${DATA.files} transcript files in ${DATA.source}`;
+  if (!DATA.demo && (nSess < 10 || spanDays < 7)) {
+    const ret = DATA.retentionDays || 30, n = $("#notice");
+    const code = (t) => el("code", {}, t);
+    n.append(el("b", {}, `Limited history: ${nSess} session${nSess === 1 ? "" : "s"} over ${spanDays} day${spanDays === 1 ? "" : "s"}. `),
+      "These are real numbers, but trends and rankings become meaningful after a week or two of normal use. ");
+    if (ret <= 30) n.append("Claude Code deletes transcripts after ", code("cleanupPeriodDays"), ` (currently ${ret} days). Set it higher in `, code("~/.claude/settings.json"), " to keep history. ");
+    else n.append(`Transcript retention is set to ${ret} days, so history will build up from here. `);
+    n.append("Run with ", code("--demo"), " to preview a full dashboard.");
+    n.hidden = false;
+  }
   const projects = [...new Set(Object.values(DATA.sessions).map((s) => s.project).filter(Boolean))].sort();
   $("#project").replaceChildren(el("option", { value: "" }, "All projects"), ...projects.map((p) => el("option", { value: p }, p)));
   const ms = [...new Set(DATA.calls.map((c) => c.m))].sort();
