@@ -69,6 +69,14 @@ class ServerTest(unittest.TestCase):
         self.db.revoke_token(tid)
         self.assertIsNone(self.db.token_kind(tok))
 
+    def test_purge_demo_only_removes_demo_people(self):
+        self.db.ingest(self.payload(email="keep@x.io"))
+        self.db.ingest(self.payload(email="fake@demo.local"))
+        self.db.purge_demo()
+        emails = {u["email"] for u in self.db.list_users()}
+        self.assertIn("keep@x.io", emails)
+        self.assertNotIn("fake@demo.local", emails)
+
     def test_rejects_missing_email(self):
         with self.assertRaises(ValueError):
             self.db.ingest({"user": {}})

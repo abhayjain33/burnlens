@@ -5,6 +5,7 @@
   burnlens-server list-tokens | revoke-token ID
   burnlens-server list-users | set-team EMAIL TEAM
   burnlens-server seed-demo          # fake org data for trying the dashboard
+  burnlens-server purge-demo         # remove it again
 """
 
 import argparse
@@ -65,6 +66,7 @@ def main(argv=None):
     st.add_argument("email")
     st.add_argument("team")
     sub.add_parser("seed-demo")
+    sub.add_parser("purge-demo")
     args = ap.parse_args(argv)
 
     if args.cmd == "serve":
@@ -91,6 +93,8 @@ def main(argv=None):
         print("updated" if db.set_team(args.email, args.team) else "no such user (they appear after their first sync)")
     elif args.cmd == "seed-demo":
         seed_demo()
+    elif args.cmd == "purge-demo":
+        print(f"Removed {db.purge_demo()} demo people and all their usage.")
     return 0
 
 

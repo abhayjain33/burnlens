@@ -1,11 +1,12 @@
-# burnlens org server: `docker compose -f deploy/docker-compose.yml up -d`
+# burnlens org server. Setup guide: docs/org-setup.md
+# cp deploy/.env.example deploy/.env, edit it, then: docker compose -f deploy/docker-compose.yml up -d
 name: burnlens
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: burnlens
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-burnlens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
       POSTGRES_DB: burnlens
     volumes:
       - burnlens-db:/var/lib/postgresql/data
@@ -19,10 +20,10 @@ services:
     build: ..
     image: burnlens-server:latest
     environment:
-      DATABASE_URL: postgresql://burnlens:${POSTGRES_PASSWORD:-burnlens}@db:5432/burnlens
+      DATABASE_URL: postgresql://burnlens:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/burnlens
       BURNLENS_SECURE_COOKIE: ${BURNLENS_SECURE_COOKIE:-0}
     ports:
-      - "${BURNLENS_PORT:-8080}:8080"
+      - "${BURNLENS_BIND:-0.0.0.0}:${BURNLENS_PORT:-8080}:8080"
     depends_on:
       db:
         condition: service_healthy

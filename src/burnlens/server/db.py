@@ -141,6 +141,12 @@ def set_team(email, team):
                             (team, email.lower())).rowcount
 
 
+def purge_demo():
+    """Delete the fake people created by seed-demo; their rows cascade."""
+    with connect() as conn:
+        return conn.execute("delete from users where email like %s", ("%@demo.local",)).rowcount
+
+
 def list_users():
     with connect() as conn:
         return conn.execute("select id, email, name, team, team_locked, last_seen, client_version from users order by email").fetchall()

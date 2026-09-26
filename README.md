@@ -50,56 +50,18 @@ Claude Code session ends                            ┌────────�
 
 **What gets sent:** token counts, cost, model, tool and MCP names, result sizes, work type, project folder name, timestamps, and the developer's email. **Never sent:** prompts, responses, file contents, tool arguments, or session titles (unless `BURNLENS_SEND_TITLES=1`).
 
-### 1. Run the server
+### Quick start
 
 ```bash
-git clone https://github.com/abhayjain33/burnlens && cd burnlens
-POSTGRES_PASSWORD=change-me docker compose -f deploy/docker-compose.yml up -d
-alias bls='docker compose -f deploy/docker-compose.yml exec server burnlens-server'
-bls create-token ingest --label "all developers"   # goes on developer machines
-bls create-token admin  --label "you"               # sees per-person data
-bls create-token viewer --label "team leads"        # team and org totals only
+git clone https://github.com/abhayjain33/burnlens.git && cd burnlens
+cp deploy/.env.example deploy/.env        # set POSTGRES_PASSWORD
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml exec server burnlens-server create-token admin
 ```
 
-Open `http://<host>:8080` and sign in with the admin or viewer token. Put it behind your usual HTTPS reverse proxy and set `BURNLENS_SECURE_COOKIE=1`. To try it with fake people first, run `bls seed-demo`.
+Then open `http://<host>:8080` and sign in with that token.
 
-### 2. Connect developers
-
-**Managed rollout (recommended).** Add this to Claude Code's [managed settings](https://docs.claude.com/en/docs/claude-code/settings) through your MDM. It installs the plugin and configures the push, and developers do nothing:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "burnlens": { "source": { "source": "git", "url": "https://github.com/abhayjain33/burnlens.git" } }
-  },
-  "enabledPlugins": { "burnlens@burnlens": true },
-  "env": {
-    "BURNLENS_SERVER": "https://burnlens.internal.example.com",
-    "BURNLENS_TOKEN": "bl_ingest_…"
-  }
-}
-```
-
-**Self-serve.** A developer with the plugin types this in Claude Code (or runs `burnlens connect …` in a terminal if they installed with uvx or pipx):
-
-```text
-/burnlens connect --server https://burnlens.internal.example.com --token bl_ingest_… --team Payments
-```
-
-This saves `~/.burnlens/config.json` and sends existing history. After that, every session end syncs in the background. `burnlens sync` (or `/burnlens sync`) pushes on demand.
-
-The hook needs `python3` on the PATH. Sync only sends transcripts that changed and re-sending is safe (the server de-duplicates), so an offline laptop catches up at its next session end. Identity is the developer's `git config --global user.email` unless `BURNLENS_USER` is set. Team comes from `BURNLENS_TEAM` or `--team`; an admin can pin it with `bls set-team email team`.
-
-### 3. Manage
-
-```bash
-bls list-users          # who has synced, their team, last sync, client version
-bls set-team priya@example.com Payments
-bls list-tokens
-bls revoke-token 3
-```
-
-**Limits of this first version:** one shared ingest token means identity isn't cryptographically verified (fine for a pilot inside a trusted network); the dashboard loads the last 90 days pre-aggregated per session and day (fine for tens of developers); there's no SSO yet.
+**For a real rollout, follow the [org setup guide](docs/org-setup.md).** It covers HTTPS, tokens, rolling the plugin out through managed settings, developer identity, checking data arrives, backups, upgrades and troubleshooting.
 
 ## How it's measured
 
