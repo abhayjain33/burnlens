@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import pathlib
 import sys
 import webbrowser
 from collections import Counter, defaultdict
@@ -12,11 +13,11 @@ from . import __version__, demo, parser, sync
 
 
 def render(data, out):
-    template = resources.files("burnlens").joinpath("dashboard.html").read_text()
+    template = resources.files("burnlens").joinpath("dashboard.html").read_text(encoding="utf-8")
     # Escape "</" so transcript text can never close the <script> tag.
     payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    with open(out, "w") as f:
+    with open(out, "w", encoding="utf-8") as f:
         f.write(template.replace("/*__DATA__*/null", payload))
     return out
 
@@ -94,6 +95,11 @@ def connect_main(argv):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    for stream in (sys.stdout, sys.stderr):  # Windows consoles may not be UTF-8
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     if argv[:1] == ["sync"]:
         sys.exit(sync_main(argv[1:]))
     if argv[:1] == ["connect"]:
@@ -113,11 +119,11 @@ def main(argv=None):
     if not data["calls"]:
         sys.exit(f"No Claude Code API calls found under {data['source']}. Try --demo to preview.")
     if args.json:
-        with open(args.json, "w") as f:
+        with open(args.json, "w", encoding="utf-8") as f:
             json.dump(data, f)
     data["version"] = __version__
     path = render(data, args.out)
     print(summary(data))
     print(f"Dashboard: {os.path.abspath(path)}")
     if not args.no_open:
-        webbrowser.open("file://" + os.path.abspath(path))
+        webbrowser.open(pathlib.Path(path).resolve().as_uri())

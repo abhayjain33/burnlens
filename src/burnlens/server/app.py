@@ -117,7 +117,7 @@ def dashboard(request: Request, days: int = 90):
         return RedirectResponse("/login", status_code=303)
     data = db.dataset(max(0, days), admin=kind == "admin")
     data["version"] = __version__
-    template = resources.files("burnlens").joinpath("dashboard.html").read_text()
+    template = resources.files("burnlens").joinpath("dashboard.html").read_text(encoding="utf-8")
     payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     return HTMLResponse(template.replace("/*__DATA__*/null", payload),
                         headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})

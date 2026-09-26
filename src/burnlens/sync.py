@@ -33,7 +33,7 @@ CHUNK = 2000
 
 def _read_json(path):
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}
@@ -42,7 +42,7 @@ def _read_json(path):
 def _write_json(path, data):
     os.makedirs(HOME, exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f)
     os.replace(tmp, path)
 

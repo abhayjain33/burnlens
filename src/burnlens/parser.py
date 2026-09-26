@@ -31,7 +31,7 @@ def default_root():
 def retention_days():
     """cleanupPeriodDays from user settings: how long Claude Code keeps transcripts."""
     try:
-        with open(os.path.join(config_dir(), "settings.json")) as f:
+        with open(os.path.join(config_dir(), "settings.json"), encoding="utf-8") as f:
             days = json.load(f).get("cleanupPeriodDays")
         return int(days) if days is not None else DEFAULT_RETENTION_DAYS
     except (OSError, ValueError, TypeError, AttributeError):
@@ -80,11 +80,11 @@ def _prompt_text(msg):
 
 def _agent_label(path):
     """Subagent transcripts live under <session>/subagents/; read a sibling meta if present."""
-    if "/subagents/" not in path:
+    if "subagents" not in os.path.normpath(path).split(os.sep)[:-1]:
         return None
     for meta in (path[:-6] + ".meta.json", os.path.join(os.path.dirname(path), "meta.json")):
         try:
-            with open(meta) as f:
+            with open(meta, encoding="utf-8") as f:
                 m = json.load(f)
             return m.get("agentType") or m.get("subagent_type") or "subagent"
         except (OSError, ValueError):
@@ -108,7 +108,7 @@ def parse_file(path, sessions, calls, tools, invocations, compactions, redact):
     if agent_file:
         new_turn("", None)
 
-    with open(path, errors="replace") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             try:
                 d = json.loads(line)
