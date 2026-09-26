@@ -9,7 +9,7 @@ It reads the transcripts Claude Code already writes to `~/.claude/projects`. It 
 ### Option A: inside Claude Code (recommended)
 
 ```text
-/plugin marketplace add <github-user>/burnlens
+/plugin marketplace add abhayjain33/burnlens
 /plugin install burnlens@burnlens
 ```
 
@@ -20,10 +20,10 @@ Arguments: `/burnlens --redact` hides session titles, `/burnlens --demo` shows s
 ### Option B: from the terminal with `uvx`
 
 ```bash
-uvx --from git+https://github.com/<github-user>/burnlens burnlens
+uvx --from git+https://github.com/abhayjain33/burnlens burnlens
 ```
 
-This needs no install; [uv](https://docs.astral.sh/uv/) fetches and runs it. You can also install it permanently with `pipx install git+https://github.com/<github-user>/burnlens`, or from a clone with `python3 scripts/run.py`.
+This needs no install; [uv](https://docs.astral.sh/uv/) fetches and runs it. You can also install it permanently with `pipx install git+https://github.com/abhayjain33/burnlens`, or from a clone with `python3 scripts/run.py`.
 
 Terminal flags: `--root DIR`, `--out PATH` (default `~/.burnlens/dashboard.html`), `--json PATH`, `--redact`, `--demo`, `--no-open`.
 
