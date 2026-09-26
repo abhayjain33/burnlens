@@ -4,15 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "burnlens"
-version = "0.1.1"
+version = "0.2.0"
 description = "See where your Claude Code tokens burn: by work type, tool, MCP server, subagent, skill and session."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 dependencies = []
 
+[project.optional-dependencies]
+server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "psycopg[binary]>=3.1", "python-multipart>=0.0.9"]
+
 [project.scripts]
 burnlens = "burnlens.cli:main"
+burnlens-server = "burnlens.server.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -8,7 +8,7 @@ import webbrowser
 from collections import Counter, defaultdict
 from importlib import resources
 
-from . import __version__, demo, parser
+from . import __version__, demo, parser, sync
 
 
 def render(data, out):
@@ -67,8 +67,39 @@ def summary(data):
     return "\n".join(lines)
 
 
+def sync_main(argv):
+    ap = argparse.ArgumentParser(prog="burnlens sync", description="Push usage to your org's burnlens server.")
+    ap.add_argument("--full", action="store_true", help="re-send everything, not just changed transcripts")
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--background", action="store_true", help="detach and return immediately (used by the hook)")
+    ap.add_argument("--root", help="transcripts dir")
+    args = ap.parse_args(argv)
+    if args.background:
+        sync.run_in_background()
+        return 0
+    return sync.run(full=args.full, quiet=args.quiet, root=args.root)
+
+
+def connect_main(argv):
+    ap = argparse.ArgumentParser(prog="burnlens connect", description="Save org server settings to ~/.burnlens/config.json.")
+    ap.add_argument("--server", required=True, help="e.g. https://burnlens.internal.example.com")
+    ap.add_argument("--token", required=True, help="ingest token from your burnlens admin")
+    ap.add_argument("--team", help="your team name (an admin can override it)")
+    ap.add_argument("--user", help="identity to report (default: git user.email)")
+    args = ap.parse_args(argv)
+    cfg = sync.connect(args.server, args.token, args.team, args.user)
+    print(f"Saved. Reporting as {sync.identity(cfg)['email']} to {cfg['server']}. Running first sync...")
+    return sync.run(full=True)
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="burnlens", description=__doc__)
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["sync"]:
+        sys.exit(sync_main(argv[1:]))
+    if argv[:1] == ["connect"]:
+        sys.exit(connect_main(argv[1:]))
+    ap = argparse.ArgumentParser(prog="burnlens", description=__doc__,
+                                 epilog="Org mode: `burnlens connect --server URL --token T`, then `burnlens sync`.")
     ap.add_argument("--root", help="transcripts dir (default: ~/.claude/projects or $CLAUDE_CONFIG_DIR/projects)")
     ap.add_argument("--out", default=os.path.expanduser("~/.burnlens/dashboard.html"), help="output HTML path")
     ap.add_argument("--json", metavar="PATH", help="also write the normalized dataset as JSON")

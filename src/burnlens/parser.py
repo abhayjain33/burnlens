@@ -186,6 +186,7 @@ def parse_file(path, sessions, calls, tools, invocations, compactions, redact):
                 cw1h = cc.get("ephemeral_1h_input_tokens") or 0
                 cw5m = cc.get("ephemeral_5m_input_tokens", cw - cw1h) or 0
                 rec = {
+                    "id": key,
                     "ts": ts,
                     "s": sid,
                     "m": model,
@@ -209,7 +210,7 @@ def parse_file(path, sessions, calls, tools, invocations, compactions, redact):
                 name = b.get("name") or "?"
                 inp = b.get("input") if isinstance(b.get("input"), dict) else {}
                 server, short = split_tool(name)
-                tr = {"ts": ts, "s": sid, "n": name, "srv": server, "t": short, "rt": 0, "ci": call_idx,
+                tr = {"id": b.get("id"), "ts": ts, "s": sid, "n": name, "srv": server, "t": short, "rt": 0, "ci": call_idx,
                       "a": calls[call_idx]["a"]}
                 if name == "Skill":
                     tr["skill"] = inp.get("skill") or inp.get("command")
@@ -271,7 +272,7 @@ def load(root=None, redact=False):
         tr.pop("ci", None)
         tr.pop("rts", None)
     for inv in invocations:
-        inv.pop("tuid", None)
+        inv["id"] = inv.pop("tuid", None)
     return {
         "source": root,
         "files": len(files),

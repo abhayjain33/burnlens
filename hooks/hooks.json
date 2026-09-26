@@ -1,0 +1,16 @@
+{
+  "description": "burnlens: push usage to your org server after each session (no-op unless configured)",
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/run.py\" sync --background",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
