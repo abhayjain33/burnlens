@@ -238,6 +238,8 @@ def parse_file(path, sessions, calls, tools, invocations, compactions, redact):
                 fp = inp.get("file_path") or inp.get("notebook_path")
                 if fp:
                     tr["path"] = fp
+                if name == "Read" and (inp.get("offset") is not None or inp.get("limit") is not None):
+                    tr["ranged"] = True
                 if name == "Bash" and inp.get("command"):
                     tr["cmd"] = command_head(inp["command"])
                 if name in ("Agent", "Task"):

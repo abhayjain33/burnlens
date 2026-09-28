@@ -67,17 +67,20 @@ File paths and command names used by the detectors stay on your machine; `burnle
 
 ## Live guardrails
 
-The plugin also steps in *during* a session, before waste happens. Defaults are cautious: they ask or warn, and never block unless you choose to.
+The plugin also steps in *during* a session, before waste happens. The guardrails ask or warn; they never block on their own.
 
 | Guardrail | What it does | Default |
 |---|---|---|
-| Read guard | Before Claude reads a generated file (lockfile, bundle) or a large file in full, Claude Code asks you first, with the token cost and a suggestion to read a range or use Grep | asks you |
+| Read guard | Before Claude reads a generated file (lockfile, bundle) or a large file in full, Claude Code asks you first, with the token cost and a suggestion to read a range or use Grep. Can be set to deny or off. | asks you |
 | Loop guard | When a command or file read returns the same result 3 times, tells Claude to change approach | on |
 | Context alert | When a session passes 150k tokens (and every 50k after), tells you what each turn now costs | on |
-| Budget | Daily or monthly API-equivalent limit: warns at 80% and 100%, optionally pauses new prompts | off until you set one |
-| Status line | `🔥 $1.23 · ctx 124k (62%) · cache 95% · today $4.10/20` | opt-in |
+| Status line | `🔥 $1.23 · ctx 124k (62%) · cache 95%` | opt-in |
 
-Use `/burnlens-guard` to see and change settings, e.g. `/burnlens-guard daily budget $20` or `/burnlens-guard status line`. From a terminal: `burnlens guard status`, `burnlens guard set daily_usd 20`, `burnlens guard reset`. Set `BURNLENS_GUARD=off` to disable everything. Each check takes about 60 ms, and a guardrail that hits an internal error stays silent, so it can't break a session.
+**Turn them all on or off** with `/burnlens-guard off` / `/burnlens-guard on` (terminal: `burnlens guard off` / `on`), or for a single session with `BURNLENS_GUARD=off`. The status line isn't a guardrail and keeps working either way. Change individual settings with `/burnlens-guard`, e.g. `/burnlens-guard read guard deny` or `/burnlens-guard status line` (terminal: `burnlens guard status`, `burnlens guard set read_guard deny`, `burnlens guard reset`).
+
+Each check takes about 60 ms, and a guardrail that hits an internal error stays silent, so it can't break a session.
+
+**Proof they pay off.** The dashboard's *Guardrails: on vs off* section compares sessions with guardrails on against sessions where they were off (or not yet installed): cost, tokens, context per call, and tool output per session. It also counts what the guardrails actually did: full reads prevented (reads that were questioned and didn't happen, with the tokens avoided), loop nudges and context alerts. Sessions do different work, so the on/off averages are indicative; prevented reads are the direct evidence. The comparison appears once there are 3 sessions each way.
 
 ## Org mode
 

@@ -73,6 +73,16 @@ def _pick_tool(cat, rnd):
     return group, None, group, BUILTIN[group][1]
 
 
+def guard_report():
+    """Example guardrails comparison for the demo dashboard."""
+    return {"on": {"sessions": 58, "usd_per_session": 1.61, "tokens_per_session": 1_902_000, "ctx_per_call": 71_400,
+                   "tool_tokens_per_session": 38_200},
+            "off": {"sessions": 64, "usd_per_session": 2.27, "tokens_per_session": 2_784_000, "ctx_per_call": 94_800,
+                    "tool_tokens_per_session": 71_900},
+            "reads": {"questioned": 41, "prevented": 33, "tokens_avoided": 18_600_000, "usd_avoided": 21.40},
+            "loops": 12, "context_alerts": 19, "enough": True, "min_sessions": 3, "enabled": True}
+
+
 def savings():
     """Example measured-savings rows for the demo dashboard."""
     now = datetime.now(timezone.utc)

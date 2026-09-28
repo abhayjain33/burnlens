@@ -186,8 +186,8 @@ def guard_main(argv):
 
     if argv[:1] in (["pre-tool"], ["post-tool"], ["prompt"]):
         return guard.main(argv)
-    ap = argparse.ArgumentParser(prog="burnlens guard", description="Live guardrails: show or change settings.")
-    ap.add_argument("action", nargs="?", choices=["status", "set", "reset", "install-statusline"], default="status")
+    ap = argparse.ArgumentParser(prog="burnlens guard", description="Live guardrails: turn on/off, show or change settings.")
+    ap.add_argument("action", nargs="?", choices=["status", "on", "off", "set", "reset", "install-statusline"], default="status")
     ap.add_argument("key", nargs="?")
     ap.add_argument("value", nargs="?")
     args = ap.parse_args(argv)
@@ -197,38 +197,46 @@ def guard_main(argv):
         print(f"Wrote {os.path.join(guard.BASE, 'statusline.sh')}.")
         print('Add to ~/.claude/settings.json: "statusLine": {"type": "command", "command": "' + cmd + '"}')
         return 0
+    if args.action in ("on", "off"):
+        cfg["enabled"] = args.action == "on"
+        guard.save_config(cfg)
+        print("Guardrails are now " + ("ON." if cfg["enabled"] else "OFF. The status line, if installed, keeps working."))
+        return 0
     if args.action == "reset":
         guard.save_config(dict(guard.DEFAULTS))
-        print("Guardrail settings reset to defaults.")
+        print("Guardrail settings reset to defaults (guardrails on).")
         return 0
     if args.action == "set":
-        if args.key not in guard.DEFAULTS:
-            print(f"Unknown setting {args.key!r}. Settings: {', '.join(guard.DEFAULTS)}")
+        if args.key not in guard.DEFAULTS or args.key == "enabled":
+            print(f"Unknown setting {args.key!r}. Settings: {', '.join(k for k in guard.DEFAULTS if k != 'enabled')} "
+                  "(use `burnlens guard on|off` for the master switch)")
             return 1
-        v = args.value
-        default = guard.DEFAULTS[args.key]
-        if v is None or v.lower() in ("none", "off", "null") and default is None:
-            cfg[args.key] = None
-        elif isinstance(default, bool):
+        default, v = guard.DEFAULTS[args.key], args.value or ""
+        if isinstance(default, bool):
             cfg[args.key] = v.lower() in ("1", "true", "on", "yes")
-        elif isinstance(default, int) or default is None:
+        elif isinstance(default, int):
             try:
-                cfg[args.key] = float(v) if args.key.endswith("_usd") else int(v)
+                cfg[args.key] = int(v)
             except ValueError:
-                print(f"{args.key} needs a number")
+                print(f"{args.key} needs a whole number")
                 return 1
         else:
+            if args.key == "read_guard" and v not in ("ask", "deny", "off"):
+                print("read_guard must be ask, deny or off")
+                return 1
             cfg[args.key] = v
         guard.save_config(cfg)
         print(f"Set {args.key} = {cfg[args.key]!r}")
         return 0
-    print("burnlens guardrails" + (" (DISABLED by BURNLENS_GUARD)" if os.environ.get("BURNLENS_GUARD", "").lower() in ("off", "0", "false") else ""))
+    state = "ON" if cfg["enabled"] else "OFF"
+    if cfg["enabled"] and guard.disabled_by_env():
+        state = "OFF for this session (BURNLENS_GUARD is set)"
+    print(f"burnlens guardrails: {state}")
     for k in guard.DEFAULTS:
+        if k == "enabled":
+            continue
         mark = "" if cfg[k] == guard.DEFAULTS[k] else "   (changed)"
         print(f"  {k:<22} {cfg[k]!r}{mark}")
-    if cfg.get("daily_usd") or cfg.get("monthly_usd"):
-        s = guard.spend()
-        print(f"Spend (API-equivalent): today ${s['today']:,.2f}, this month ${s['month']:,.2f}")
     print(f"Settings file: {guard.CONFIG}")
     return 0
 
@@ -273,10 +281,12 @@ def main(argv=None):
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(data, f)
     data["version"] = __version__
+    from . import guard
+
     if args.demo:
-        data["fixes"], data["savings"] = fixes.recommend(data, local=False), demo.savings()
+        data["fixes"], data["savings"], data["guard"] = fixes.recommend(data, local=False), demo.savings(), demo.guard_report()
     else:
-        data["fixes"], data["savings"] = fixes.recommend(data), fixes.savings(data)
+        data["fixes"], data["savings"], data["guard"] = fixes.recommend(data), fixes.savings(data), guard.report(data)
     if args.redact:
         for t in data["tools"]:
             t.pop("path", None), t.pop("cmd", None)

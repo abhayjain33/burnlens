@@ -2,15 +2,15 @@
 
   pre-tool     PreToolUse on Read: large or generated files read without a range
   post-tool    PostToolUse on Bash/Read: the same result coming back again and again
-  prompt       UserPromptSubmit: context-size alert and spend budget
-  statusline   status line: session cost, context, cache hit rate, today vs budget
+  prompt       UserPromptSubmit: context-size alert
+  statusline   status line: session cost, context size, cache hit rate
 
 Every entry point reads the hook's JSON from stdin, prints a JSON reply (or
 nothing), and never raises: a guardrail bug must not break a session.
-Settings: ~/.burnlens/guard.json. BURNLENS_GUARD=off disables everything.
+Settings: ~/.burnlens/guard.json. `burnlens guard off` (or BURNLENS_GUARD=off for one
+session) turns every guardrail off; the status line keeps working since it only displays.
 """
 
-import calendar
 import hashlib
 import json
 import os
@@ -21,20 +21,19 @@ HOME = os.path.expanduser("~")
 BASE = os.path.join(HOME, ".burnlens")
 CONFIG = os.path.join(BASE, "guard.json")
 STATE_DIR = os.path.join(BASE, "guard-state")
-SPEND_CACHE = os.path.join(BASE, "spend-cache.json")
+EVENTS = os.path.join(BASE, "guard-events.jsonl")      # what each guardrail did, for the dashboard
+SESSIONS = os.path.join(BASE, "guard-sessions.json")    # session id -> "on" | "off"
 CHARS_PER_TOKEN = 3.6
 BYTES_PER_TOKEN = 3.6  # close enough for text files; binary files aren't read as text anyway
 
 DEFAULTS = {
+    "enabled": True,                # master switch for every guardrail
     "read_guard": "ask",            # ask | deny | off
     "max_read_tokens": 20000,       # larger reads without offset/limit get questioned
     "generated_min_tokens": 2000,   # generated files (lockfiles, bundles) above this get questioned
     "loop_guard": True,
     "loop_threshold": 3,            # same command + same output this many times
     "context_warn_tokens": 150000,  # alert when a session's context passes this, then every +50k
-    "daily_usd": None,              # API-equivalent budget; None = off
-    "monthly_usd": None,
-    "budget_action": "warn",        # warn | block (block stops new prompts once the budget is used)
 }
 
 
@@ -100,6 +99,55 @@ def _fmt_tok(n):
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}k" if n >= 1e3 else str(int(n))
 
 
+# ---------- evidence for the on/off comparison ----------
+
+def log_event(kind, session_id, **detail):
+    try:
+        os.makedirs(BASE, exist_ok=True)
+        with open(EVENTS, "a", encoding="utf-8") as f:
+            f.write(json.dumps(dict(detail, kind=kind, s=session_id,
+                                    ts=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+    except OSError:
+        pass
+
+
+def record_session(session_id, on):
+    """Remember whether guardrails were on for a session ("mixed" if toggled mid-session)."""
+    if not session_id:
+        return
+    try:
+        with open(SESSIONS, encoding="utf-8") as f:
+            seen = json.load(f)
+    except (OSError, ValueError):
+        seen = {}
+    tag = "on" if on else "off"
+    old = seen.get(session_id)
+    new = tag if old in (None, tag) else "mixed"
+    if new == old:
+        return
+    seen[session_id] = new
+    os.makedirs(BASE, exist_ok=True)
+    with open(SESSIONS + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(seen, f)
+    os.replace(SESSIONS + ".tmp", SESSIONS)
+
+
+def load_events():
+    try:
+        with open(EVENTS, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+def load_sessions():
+    try:
+        with open(SESSIONS, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
 # ---------- read guard ----------
 
 def check_read(tool_input, cfg):
@@ -136,6 +184,12 @@ def pre_tool(event, cfg):
     if not verdict:
         return None
     decision, reason = verdict
+    inp = event.get("tool_input") or {}
+    try:
+        tokens = int(os.path.getsize(inp.get("file_path", "")) / BYTES_PER_TOKEN)
+    except OSError:
+        tokens = 0
+    log_event("read", event.get("session_id"), path=inp.get("file_path"), tokens=tokens, decision=decision)
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision,
                                    "permissionDecisionReason": reason}}
 
@@ -172,6 +226,7 @@ def post_tool(event, cfg):
     entry["warned"] = True
     save_state(sid, state)
     what = f"`{inp.get('command', '')[:80]}`" if name == "Bash" else os.path.basename(inp.get("file_path", ""))
+    log_event("loop", sid, tool=name, repeats=entry["n"])
     msg = (f"burnlens: {name} {what} has returned the same result {entry['n']} times in this session. Repeating it "
            f"won't change the outcome and adds the same output to context again. Change approach: check the "
            f"assumption behind it, look at a different file or log, or ask the user.")
@@ -218,6 +273,7 @@ def context_alert(event, cfg, state):
     if not level or state.get("context_warned", 0) >= level:
         return None
     state["context_warned"] = level
+    log_event("context", event.get("session_id"), tokens=tokens)
     from .pricing import rates
 
     r = rates(model)
@@ -226,102 +282,86 @@ def context_alert(event, cfg, state):
             f"For a new task, /compact or a fresh session will cut that.")
 
 
-# ---------- budget ----------
-
-def spend(now=None):
-    """API-equivalent spend today and this month (local time), from transcripts.
-    Per-file results are cached by (mtime, size), so only changed files are re-parsed."""
-    from . import parser
-
-    now = now or time.time()
-    today, month = time.strftime("%Y-%m-%d", time.localtime(now)), time.strftime("%Y-%m", time.localtime(now))
-    month_start = time.mktime(time.strptime(month + "-01", "%Y-%m-%d"))
-    try:
-        with open(SPEND_CACHE, encoding="utf-8") as f:
-            cache = json.load(f)
-    except (OSError, ValueError):
-        cache = {}
-    root = parser.default_root()
-    fresh = {}
-    for p in parser.glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True):
-        try:
-            st = os.stat(p)
-        except OSError:
-            continue
-        if st.st_mtime < month_start:
-            continue  # nothing this month
-        sig = [st.st_mtime, st.st_size]
-        hit = cache.get(p)
-        if hit and hit["sig"] == sig:
-            fresh[p] = hit
-            continue
-        from collections import defaultdict
-
-        sessions, calls, tools, inv, comp = {}, [], [], [], defaultdict(list)
-        parser.parse_file(p, sessions, calls, tools, inv, comp, redact=True)
-        days = defaultdict(float)
-        for c in calls:
-            if c.get("ts") and c.get("usd"):
-                t = calendar.timegm(time.strptime(c["ts"][:19], "%Y-%m-%dT%H:%M:%S"))  # transcript times are UTC
-                days[time.strftime("%Y-%m-%d", time.localtime(t))] += c["usd"]
-        fresh[p] = {"sig": sig, "days": dict(days)}
-    os.makedirs(BASE, exist_ok=True)
-    with open(SPEND_CACHE + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(fresh, f)
-    os.replace(SPEND_CACHE + ".tmp", SPEND_CACHE)
-    day_total = sum(v["days"].get(today, 0) for v in fresh.values())
-    month_total = sum(u for v in fresh.values() for d, u in v["days"].items() if d.startswith(month))
-    return {"today": day_total, "month": month_total}
-
-
-def cached_spend():
-    """Spend from the cache only (for the status line, which must be instant)."""
-    try:
-        with open(SPEND_CACHE, encoding="utf-8") as f:
-            cache = json.load(f)
-    except (OSError, ValueError):
-        return None
-    today, month = time.strftime("%Y-%m-%d"), time.strftime("%Y-%m")
-    return {"today": sum(v["days"].get(today, 0) for v in cache.values()),
-            "month": sum(u for v in cache.values() for d, u in v["days"].items() if d.startswith(month))}
-
-
-def budget_check(cfg, state, spent=None):
-    """(block_reason or None, message or None)."""
-    limits = [(k, cfg[k + "_usd"]) for k in ("daily", "monthly") if cfg.get(k + "_usd")]
-    if not limits:
-        return None, None
-    spent = spent or spend()
-    for period, limit in limits:
-        used = spent["today" if period == "daily" else "month"]
-        label = "today" if period == "daily" else "this month"
-        if used >= limit:
-            text = (f"burnlens budget: {label}'s API-equivalent spend is ${used:,.2f}, over your {period} limit of "
-                    f"${limit:,.2f}.")
-            if cfg["budget_action"] == "block":
-                return text + " New prompts are paused. Raise the limit or turn blocking off with /burnlens-guard.", None
-            key = f"{period}_over_{time.strftime('%Y-%m-%d')}"
-            if not state.get(key):
-                state[key] = True
-                return None, text
-        elif used >= 0.8 * limit:
-            key = f"{period}_80_{time.strftime('%Y-%m-%d' if period == 'daily' else '%Y-%m')}"
-            if not state.get(key):
-                state[key] = True
-                return None, f"burnlens budget: ${used:,.2f} of your ${limit:,.2f} {period} limit used ({used / limit:.0%})."
-    return None, None
-
-
 def prompt(event, cfg):
     sid = event.get("session_id")
     state = load_state(sid)
-    blocked, budget_msg = budget_check(cfg, state)
-    ctx_msg = context_alert(event, cfg, state)
-    save_state(sid, state)
-    if blocked:
-        return {"decision": "block", "reason": blocked}
-    msgs = [m for m in (budget_msg, ctx_msg) if m]
-    return {"systemMessage": "\n".join(msgs)} if msgs else None
+    msg = context_alert(event, cfg, state)
+    if msg:
+        save_state(sid, state)
+        return {"systemMessage": msg}
+    return None
+
+
+# ---------- on/off comparison for the dashboard ----------
+
+MIN_SESSIONS_EACH = 3
+
+
+def report(data):
+    """Guardrails on vs off, and what the guardrails did, from local records + transcripts."""
+    from .pricing import rates
+
+    tags = load_sessions()
+    per = {}
+    for c in data["calls"]:
+        e = per.setdefault(c["s"], {"usd": 0.0, "tok": 0, "main": 0, "ctx": 0, "tools": 0})
+        e["usd"] += c.get("usd") or 0
+        e["tok"] += c["i"] + c["o"] + c["cr"] + c["cw"]
+        if not c.get("a"):
+            e["main"] += 1
+            e["ctx"] += c["i"] + c["cr"] + c["cw"]
+    for t in data["tools"]:
+        if t["s"] in per:
+            per[t["s"]]["tools"] += t.get("rt", 0)
+    groups = {"on": [], "off": []}
+    for sid, e in per.items():
+        tag = tags.get(sid, "off")  # untagged = guardrails weren't running (off, or before install)
+        if tag in groups and e["main"]:
+            groups[tag].append(e)
+
+    def summarize(rows):
+        n = len(rows)
+        if not n:
+            return {"sessions": 0}
+        calls = sum(r["main"] for r in rows) or 1
+        return {"sessions": n, "usd_per_session": sum(r["usd"] for r in rows) / n,
+                "tokens_per_session": sum(r["tok"] for r in rows) / n,
+                "ctx_per_call": sum(r["ctx"] for r in rows) / calls,
+                "tool_tokens_per_session": sum(r["tools"] for r in rows) / n}
+
+    # Which questioned reads were prevented: no full read of that file followed in the session.
+    by_session = {}
+    for c in data["calls"]:
+        if not c.get("a"):
+            by_session.setdefault(c["s"], []).append(c)
+    compactions = data.get("compactions") or {}
+    reads = {"questioned": 0, "prevented": 0, "tokens_avoided": 0, "usd_avoided": 0.0}
+    counts = {"loop": 0, "context": 0}
+    for ev in load_events():
+        if ev.get("kind") in counts:
+            counts[ev["kind"]] += 1
+            continue
+        if ev.get("kind") != "read":
+            continue
+        reads["questioned"] += 1
+        sid, ts, path = ev.get("s"), ev.get("ts", ""), ev.get("path")
+        went_ahead = any(t["s"] == sid and t["n"] == "Read" and t.get("path") == path and not t.get("ranged")
+                         and (t.get("ts") or "")[:19] >= ts[:19] for t in data["tools"])
+        if went_ahead:
+            continue
+        reads["prevented"] += 1
+        calls = by_session.get(sid, [])
+        stop = min([x for x in compactions.get(sid, []) if x and x > ts] or ["\uffff"])
+        later = sum(1 for c in calls if ts < (c.get("ts") or "") < stop)
+        tok = ev.get("tokens") or 0
+        reads["tokens_avoided"] += tok * (1 + later)
+        r = rates(calls[0]["m"]) if calls else None
+        if r:
+            reads["usd_avoided"] += (tok * r[0] * 1.25 + tok * later * r[2]) / 1e6
+    on, off = summarize(groups["on"]), summarize(groups["off"])
+    return {"on": on, "off": off, "reads": reads, "loops": counts["loop"], "context_alerts": counts["context"],
+            "enough": on["sessions"] >= MIN_SESSIONS_EACH and off["sessions"] >= MIN_SESSIONS_EACH,
+            "min_sessions": MIN_SESSIONS_EACH, "enabled": config()["enabled"]}
 
 
 # ---------- status line ----------
@@ -339,13 +379,6 @@ def statusline(event, cfg):
     inp = (cu.get("input_tokens") or 0) + (cu.get("cache_read_input_tokens") or 0) + (cu.get("cache_creation_input_tokens") or 0)
     if inp:
         parts.append(f"cache {(cu.get('cache_read_input_tokens') or 0) / inp:.0%}")
-    spent = cached_spend()
-    if spent:
-        today = f"today ${spent['today']:,.2f}"
-        if cfg.get("daily_usd"):
-            limit = cfg["daily_usd"]
-            today += f"/{limit:,.0f}" if limit >= 10 else f"/{limit:,.2f}"
-        parts.append(today)
     return " · ".join(parts) or "🔥 burnlens"
 
 
@@ -378,9 +411,11 @@ def install_statusline():
 HANDLERS = {"pre-tool": pre_tool, "post-tool": post_tool, "prompt": prompt}
 
 
+def disabled_by_env():
+    return os.environ.get("BURNLENS_GUARD", "").lower() in ("off", "0", "false")
+
+
 def main(argv):
-    if os.environ.get("BURNLENS_GUARD", "").lower() in ("off", "0", "false"):
-        return 0
     which = argv[0] if argv else ""
     try:
         event = json.loads(sys.stdin.read() or "{}")
@@ -390,6 +425,11 @@ def main(argv):
         cfg = config()
         if which == "statusline":
             print(statusline(event, cfg))
+            return 0
+        on = cfg["enabled"] and not disabled_by_env()
+        if which == "prompt":
+            record_session(event.get("session_id"), on)  # tagged even when off, for the comparison
+        if not on:
             return 0
         handler = HANDLERS.get(which)
         out = handler(event, cfg) if handler else None

@@ -95,6 +95,16 @@ tr.child td { color: var(--ink-2); } tr.child td:first-child { padding-left: 28p
 .fix-evidence { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .conf { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
 .conf.measured { border-color: var(--good); } .conf.estimated { border-color: var(--warning); } .conf.quality { border-color: var(--s1); }
+.guard-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 4px 0 14px; }
+.guard-stats > div { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+.guard-stats .v { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
+.guard-stats .l { color: var(--ink-2); font-size: 12.5px; } .guard-stats .n { color: var(--muted); font-size: 12px; }
+.gc-row { display: grid; grid-template-columns: 190px 1fr 110px; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.gc-bars { display: grid; gap: 3px; }
+.gc-bar { height: 12px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.gc-delta { text-align: right; font-variant-numeric: tabular-nums; }
+.gc-delta.better { color: var(--good-ink); }
+@media (max-width: 720px) { .guard-stats { grid-template-columns: 1fr; } .gc-row { grid-template-columns: 1fr 90px; } .gc-row .gc-bars { grid-column: 1 / -1; grid-row: 2; } }
 .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); margin-left: 6px; font-family: system-ui, sans-serif; }
 .inbar { position: relative; min-width: 120px; }
 .inbar .track { height: 8px; border-radius: 0 4px 4px 0; background: var(--bar); }
@@ -179,6 +189,17 @@ svg .baseline { stroke: var(--axis); stroke-width: 1; }
       <p class="desc">Usage since each fix was applied, compared with the baseline recorded when you applied it.</p>
       <div class="scroll"><table id="savingsTable"></table></div>
     </div>
+  </div>
+
+  <div class="card section" id="guardCard" hidden>
+    <div class="card-head">
+      <div><h2>Guardrails: on vs off</h2><p class="desc" id="guardDesc"></p></div>
+      <span class="conf" id="guardState"></span>
+    </div>
+    <div class="guard-stats" id="guardStats"></div>
+    <div class="legend" id="guardLegend"></div>
+    <div id="guardCompare"></div>
+    <p class="fix-evidence" id="guardNote"></p>
   </div>
 
   <div class="card section">
@@ -687,6 +708,46 @@ function fixesSection() {
   }
 }
 
+// ---------- guardrails on vs off (local only) ----------
+function guardSection() {
+  const g = DATA.guard;
+  if (DATA.org || !g) return;
+  const r = g.reads || {};
+  if (!g.on.sessions && !g.off.sessions && !r.questioned && !g.loops && !g.context_alerts) return;
+  $("#guardCard").hidden = false;
+  $("#guardState").textContent = g.enabled ? "guardrails ON" : "guardrails OFF";
+  $("#guardDesc").textContent = "What the guardrails did, and how sessions with them on compare with sessions where they were off or not yet installed.";
+  const stat = (v, l, n) => el("div", {}, el("div", { class: "v" }, v), el("div", { class: "l" }, l), el("div", { class: "n" }, n));
+  $("#guardStats").replaceChildren(
+    stat(fmtInt(r.prevented || 0), "full reads prevented", r.questioned ? `of ${fmtInt(r.questioned)} questioned · ~${fmtTok(r.tokens_avoided || 0)} tokens, ~${fmtUsd(r.usd_avoided || 0)} avoided` : "none questioned yet"),
+    stat(fmtInt(g.loops || 0), "loop nudges", "same result 3× → change approach"),
+    stat(fmtInt(g.context_alerts || 0), "context alerts", "large-context warnings shown"));
+  const box = $("#guardCompare");
+  if (!g.enough) {
+    $("#guardLegend").replaceChildren();
+    box.replaceChildren(el("div", { class: "empty" },
+      `The on/off comparison needs at least ${g.min_sessions} sessions each way. So far: ${g.on.sessions} with guardrails on, ${g.off.sessions} with them off or not installed.`));
+    $("#guardNote").textContent = "";
+    return;
+  }
+  const series = [["on", "Guardrails on", "--s1"], ["off", "Off / not installed", "--s2"]];
+  $("#guardLegend").replaceChildren(...series.map(([key, label, c]) => el("span", {}, el("i", { style: `background:var(${c})` }), `${label} (${fmtInt(g[key].sessions)} sessions)`)));
+  const metrics = [["usd_per_session", "Cost per session", fmtUsd], ["tokens_per_session", "Tokens per session", fmtTok],
+    ["ctx_per_call", "Context per call", fmtTok], ["tool_tokens_per_session", "Tool output per session", fmtTok]];
+  box.replaceChildren(...metrics.map(([k, label, fmt]) => {
+    const on = g.on[k], off = g.off[k], max = Math.max(on, off) || 1, delta = off ? (on - off) / off : 0;
+    const bars = el("div", { class: "gc-bars" }, ...series.map(([key, name, c]) => {
+      const b = el("div", { class: "gc-bar", style: `width:${(g[key][k] / max) * 100}%;background:var(${c})` });
+      hover(b, () => [label, [[name, fmt(g[key][k]), css(c)]]]);
+      return b;
+    }));
+    return el("div", { class: "gc-row" }, el("div", {}, el("div", {}, label), el("div", { class: "fix-evidence" }, `${fmt(on)} vs ${fmt(off)}`)), bars,
+      el("div", { class: "gc-delta" + (delta < 0 ? " better" : "") }, (delta < 0 ? "↓ " : "↑ ") + fmtPct(Math.abs(delta)) + (delta < 0 ? " lower" : " higher")));
+  }));
+  $("#guardNote").textContent = "Averages over different sessions doing different work, so treat the comparison as indicative. " +
+    "\"Full reads prevented\" is the direct evidence: it counts reads that were questioned and did not happen, with the tokens they would have added and re-sent.";
+}
+
 // ---------- org mode ----------
 const personName = (email) => (DATA.people && DATA.people[email] && DATA.people[email].name) || email || "";
 function teams(v) {
@@ -789,6 +850,7 @@ function init() {
   $("#inclAgents").addEventListener("change", (e) => { state.agents = e.target.checked; render(); });
   if (DATA.org) initOrg();
   fixesSection();
+  guardSection();
   seg("#range", "days", Number); seg("#dailyMetric", "dailyM"); seg("#catMetric", "catM"); seg("#modelMetric", "modelM"); seg("#toolMetric", "toolM");
   $("#toolTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.toolTab = b.dataset.t; $("#toolTabs").querySelectorAll("button").forEach((x) => x.setAttribute("aria-selected", String(x === b))); render(); });
   $("#themeBtn").addEventListener("click", () => {
