@@ -1,6 +1,6 @@
 {
   "name": "burnlens",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "See where your Claude Code tokens burn: by work type, tool, MCP server, subagent, skill and session. Local only.",
   "author": { "name": "abhayjain" },
   "keywords": ["tokens", "usage", "cost", "mcp", "observability"]

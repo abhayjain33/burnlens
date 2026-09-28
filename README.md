@@ -65,6 +65,20 @@ Each recommendation shows a projected monthly saving and how far to trust it. **
 
 File paths and command names used by the detectors stay on your machine; `burnlens sync` strips them before anything goes to an org server.
 
+## Live guardrails
+
+The plugin also steps in *during* a session, before waste happens. Defaults are cautious: they ask or warn, and never block unless you choose to.
+
+| Guardrail | What it does | Default |
+|---|---|---|
+| Read guard | Before Claude reads a generated file (lockfile, bundle) or a large file in full, Claude Code asks you first, with the token cost and a suggestion to read a range or use Grep | asks you |
+| Loop guard | When a command or file read returns the same result 3 times, tells Claude to change approach | on |
+| Context alert | When a session passes 150k tokens (and every 50k after), tells you what each turn now costs | on |
+| Budget | Daily or monthly API-equivalent limit: warns at 80% and 100%, optionally pauses new prompts | off until you set one |
+| Status line | `🔥 $1.23 · ctx 124k (62%) · cache 95% · today $4.10/20` | opt-in |
+
+Use `/burnlens-guard` to see and change settings, e.g. `/burnlens-guard daily budget $20` or `/burnlens-guard status line`. From a terminal: `burnlens guard status`, `burnlens guard set daily_usd 20`, `burnlens guard reset`. Set `BURNLENS_GUARD=off` to disable everything. Each check takes about 60 ms, and a guardrail that hits an internal error stays silent, so it can't break a session.
+
 ## Org mode
 
 A self-hosted server that collects everyone's usage into one dashboard, with views by team and, for admins, by person.
@@ -114,9 +128,9 @@ python3 scripts/run.py --demo
 
 ```
 .claude-plugin/     plugin.json + marketplace.json (this repo is its own marketplace)
-commands/           /burnlens, /burnlens-fix, /burnlens-savings slash commands
+commands/           /burnlens, /burnlens-fix, /burnlens-savings, /burnlens-guard slash commands
 scripts/run.py      runs from a checkout without installing
-hooks/hooks.json    SessionEnd hook → background `burnlens sync`
+hooks/hooks.json    guardrail hooks (PreToolUse, PostToolUse, UserPromptSubmit) + SessionEnd sync
 src/burnlens/       parser, classifier, pricing, fixes (detectors + savings ledger), demo data, sync client, dashboard.html
 src/burnlens/server FastAPI + Postgres org server (`pip install ".[server]"`)
 deploy/             docker-compose.yml; Dockerfile at repo root

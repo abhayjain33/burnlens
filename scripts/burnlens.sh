@@ -11,10 +11,21 @@
 script="${BASH_SOURCE[0]//\\//}"
 run_py="$(dirname "$script")/run.py"
 
+# Hooks and the status line must print clean JSON / one line and stay silent on failure.
+hook=0
+case "$1 $2" in
+  "guard pre-tool" | "guard post-tool" | "guard prompt" | "statusline "*) hook=1 ;;
+esac
+
 for candidate in python3 python "py -3"; do
   # shellcheck disable=SC2086
   if command -v ${candidate%% *} >/dev/null 2>&1 &&
      $candidate -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
+    if [ "$hook" = 1 ]; then
+      # shellcheck disable=SC2086
+      $candidate "$run_py" "$@" 2>/dev/null
+      exit 0
+    fi
     # shellcheck disable=SC2086
     $candidate "$run_py" "$@" 2>&1
     status=$?
@@ -24,6 +35,8 @@ for candidate in python3 python "py -3"; do
     exit 0
   fi
 done
+
+[ "$hook" = 1 ] && exit 0  # no Python: a hook must not print advice on every tool call
 
 found=""
 for candidate in python3 python py; do

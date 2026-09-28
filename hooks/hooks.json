@@ -1,15 +1,26 @@
 {
-  "description": "burnlens: push usage to your org server after each session (no-op unless configured)",
+  "description": "burnlens: live token guardrails (settings: /burnlens-guard) and org sync after each session (no-op unless configured)",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh\" guard pre-tool", "timeout": 5 }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read",
+        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh\" guard post-tool", "timeout": 5 }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh\" guard prompt", "timeout": 20 }]
+      }
+    ],
     "SessionEnd": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh\" sync --background",
-            "timeout": 10
-          }
-        ]
+        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh\" sync --background", "timeout": 10 }]
       }
     ]
   }

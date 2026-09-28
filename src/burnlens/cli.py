@@ -181,6 +181,58 @@ def savings_main(argv):
     return 0
 
 
+def guard_main(argv):
+    from . import guard
+
+    if argv[:1] in (["pre-tool"], ["post-tool"], ["prompt"]):
+        return guard.main(argv)
+    ap = argparse.ArgumentParser(prog="burnlens guard", description="Live guardrails: show or change settings.")
+    ap.add_argument("action", nargs="?", choices=["status", "set", "reset", "install-statusline"], default="status")
+    ap.add_argument("key", nargs="?")
+    ap.add_argument("value", nargs="?")
+    args = ap.parse_args(argv)
+    cfg = guard.config()
+    if args.action == "install-statusline":
+        cmd = guard.install_statusline()
+        print(f"Wrote {os.path.join(guard.BASE, 'statusline.sh')}.")
+        print('Add to ~/.claude/settings.json: "statusLine": {"type": "command", "command": "' + cmd + '"}')
+        return 0
+    if args.action == "reset":
+        guard.save_config(dict(guard.DEFAULTS))
+        print("Guardrail settings reset to defaults.")
+        return 0
+    if args.action == "set":
+        if args.key not in guard.DEFAULTS:
+            print(f"Unknown setting {args.key!r}. Settings: {', '.join(guard.DEFAULTS)}")
+            return 1
+        v = args.value
+        default = guard.DEFAULTS[args.key]
+        if v is None or v.lower() in ("none", "off", "null") and default is None:
+            cfg[args.key] = None
+        elif isinstance(default, bool):
+            cfg[args.key] = v.lower() in ("1", "true", "on", "yes")
+        elif isinstance(default, int) or default is None:
+            try:
+                cfg[args.key] = float(v) if args.key.endswith("_usd") else int(v)
+            except ValueError:
+                print(f"{args.key} needs a number")
+                return 1
+        else:
+            cfg[args.key] = v
+        guard.save_config(cfg)
+        print(f"Set {args.key} = {cfg[args.key]!r}")
+        return 0
+    print("burnlens guardrails" + (" (DISABLED by BURNLENS_GUARD)" if os.environ.get("BURNLENS_GUARD", "").lower() in ("off", "0", "false") else ""))
+    for k in guard.DEFAULTS:
+        mark = "" if cfg[k] == guard.DEFAULTS[k] else "   (changed)"
+        print(f"  {k:<22} {cfg[k]!r}{mark}")
+    if cfg.get("daily_usd") or cfg.get("monthly_usd"):
+        s = guard.spend()
+        print(f"Spend (API-equivalent): today ${s['today']:,.2f}, this month ${s['month']:,.2f}")
+    print(f"Settings file: {guard.CONFIG}")
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     for stream in (sys.stdout, sys.stderr):  # Windows consoles may not be UTF-8
@@ -192,6 +244,12 @@ def main(argv=None):
         sys.exit(sync_main(argv[1:]))
     if argv[:1] == ["connect"]:
         sys.exit(connect_main(argv[1:]))
+    if argv[:1] == ["guard"]:
+        sys.exit(guard_main(argv[1:]))
+    if argv[:1] == ["statusline"]:
+        from . import guard
+
+        sys.exit(guard.main(["statusline"]))
     if argv[:1] == ["fixes"]:
         sys.exit(fixes_main(argv[1:]))
     if argv[:1] == ["savings"]:
