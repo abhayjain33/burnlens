@@ -117,7 +117,7 @@ Send developers the server URL and the ingest token. Each one runs, inside Claud
 ```text
 /plugin marketplace add abhayjain33/burnlens
 /plugin install burnlens@burnlens
-/burnlens connect --server https://burnlens.internal.example.com --token bl_ingest_… --team Payments
+/burnlens:burnlens connect --server https://burnlens.internal.example.com --token bl_ingest_… --team Payments
 ```
 
 `connect` saves the settings to `~/.burnlens/config.json` and immediately sends their existing history.
@@ -130,14 +130,14 @@ Each developer appears on the dashboard under their **global git email**. If it 
 git config --global user.email          # should print their work email
 ```
 
-A developer can also report a specific identity with `/burnlens connect … --user name@example.com`.
+A developer can also report a specific identity with `/burnlens:burnlens connect … --user name@example.com`.
 
 ## 5. Check it works
 
 On a developer machine, inside Claude Code:
 
 ```text
-/burnlens sync
+/burnlens:burnlens sync
 ```
 
 It should reply with something like `sent 12 sessions, 830 calls … as name@example.com`. On the server:
@@ -188,7 +188,7 @@ gunzip -c burnlens-2026-01-31.sql.gz | docker compose -f deploy/docker-compose.y
 
 | Symptom | Likely cause and fix |
 |---|---|
-| `/burnlens sync` says "no org server configured" | The managed settings `env` hasn't reached this machine, or `connect` wasn't run. Restart Claude Code after the settings file is installed. |
+| `/burnlens:burnlens sync` says "no org server configured" | The managed settings `env` hasn't reached this machine, or `connect` wasn't run. Restart Claude Code after the settings file is installed. |
 | `server returned 401` | Wrong or revoked ingest token. |
 | `could not reach server` | DNS, VPN or firewall; check `curl https://<server>/healthz` from the laptop. |
 | Plugin won't install ("repository not found") | That developer's git has no access to the private repo. |

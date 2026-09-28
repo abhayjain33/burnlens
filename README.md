@@ -13,9 +13,11 @@ It reads the transcripts Claude Code already writes to `~/.claude/projects`. It 
 /plugin install burnlens@burnlens
 ```
 
-Needs Python 3.8+ (`python3`, `python` or Windows' `py` launcher; burnlens finds whichever works). Then type **`/burnlens`** in any session. It builds the dashboard, opens it in your browser, and Claude summarizes the highlights in chat.
+Needs Python 3.8+ (`python3`, `python` or Windows' `py` launcher; burnlens finds whichever works). Then type **`/burnlens:burnlens`** in any session. It builds the dashboard, opens it in your browser, and Claude summarizes the highlights in chat.
 
-Arguments: `/burnlens --redact` hides session titles, `/burnlens --demo` shows synthetic data, and `/burnlens --no-open` skips opening the browser.
+Claude Code names plugin commands `plugin:command`, so all burnlens commands start with `/burnlens:`. Type `/burnlens:` to see all four in autocomplete. The short form (`/burnlens-guard`) gives "Unknown command".
+
+Arguments: `/burnlens:burnlens --redact` hides session titles, `/burnlens:burnlens --demo` shows synthetic data, and `/burnlens:burnlens --no-open` skips opening the browser.
 
 ### Option B: from the terminal with `uvx`
 
@@ -43,8 +45,8 @@ Terminal flags: `--root DIR`, `--out PATH` (default `~/.burnlens/dashboard.html`
 burnlens doesn't stop at charts. It recommends specific changes, applies them with your approval, and then measures what they saved.
 
 ```text
-/burnlens-fix        # see recommended fixes, pick which to apply; Claude makes each change and you approve it
-/burnlens-savings    # later: measured before → after for each applied fix
+/burnlens:burnlens-fix        # see recommended fixes, pick which to apply; Claude makes each change and you approve it
+/burnlens:burnlens-savings    # later: measured before → after for each applied fix
 ```
 
 (From a terminal: `burnlens fixes`, `burnlens fixes applied <id>`, `burnlens fixes dismiss <id>`, `burnlens savings`.)
@@ -59,9 +61,9 @@ burnlens doesn't stop at charts. It recommends specific changes, applies them wi
 | Model fit for each role | Explore agents on Opus; a code reviewer on Sonnet | Bulk reading and routine implementation → Sonnet; planning and review → your strongest model (costs more, labelled *quality*) |
 | Planning and implementing on Opus | Opus sessions that plan, then write code | `/model opusplan`: Opus in plan mode, Sonnet for implementation |
 
-Model advice follows the role, not just the price. A better plan saves more in implementation than it costs, so planning and review agents are never pushed to a cheaper model. Model switches are measured by **cost per run**, not per token: if a cheaper model needs more turns and ends up costing more, `/burnlens-savings` reports that the fix *made it worse*.
+Model advice follows the role, not just the price. A better plan saves more in implementation than it costs, so planning and review agents are never pushed to a cheaper model. Model switches are measured by **cost per run**, not per token: if a cheaper model needs more turns and ends up costing more, `/burnlens:burnlens-savings` reports that the fix *made it worse*.
 
-Each recommendation shows a projected monthly saving and how far to trust it. **Measured** means cost that already happened and the fix removes. **Estimated** depends on a stated assumption, e.g. "output shrinks 60%". Unused MCP servers are **not quantifiable**. When you apply a fix, burnlens records a baseline in `~/.burnlens/fixes.json`. Once there are a few sessions of new usage, `/burnlens-savings` compares against it: tokens per session (or per call) before and after, times the usage since. The dashboard shows both lists too.
+Each recommendation shows a projected monthly saving and how far to trust it. **Measured** means cost that already happened and the fix removes. **Estimated** depends on a stated assumption, e.g. "output shrinks 60%". Unused MCP servers are **not quantifiable**. When you apply a fix, burnlens records a baseline in `~/.burnlens/fixes.json`. Once there are a few sessions of new usage, `/burnlens:burnlens-savings` compares against it: tokens per session (or per call) before and after, times the usage since. The dashboard shows both lists too.
 
 File paths and command names used by the detectors stay on your machine; `burnlens sync` strips them before anything goes to an org server.
 
@@ -76,7 +78,7 @@ The plugin also steps in *during* a session, before waste happens. The guardrail
 | Context alert | When a session passes 150k tokens (and every 50k after), tells you what each turn now costs | on |
 | Status line | `🔥 $1.23 · ctx 124k (62%) · cache 95%` | opt-in |
 
-**Turn them all on or off** with `/burnlens-guard off` / `/burnlens-guard on` (terminal: `burnlens guard off` / `on`), or for a single session with `BURNLENS_GUARD=off`. The status line isn't a guardrail and keeps working either way. Change individual settings with `/burnlens-guard`, e.g. `/burnlens-guard read guard deny` or `/burnlens-guard status line` (terminal: `burnlens guard status`, `burnlens guard set read_guard deny`, `burnlens guard reset`).
+**Turn them all on or off** with `/burnlens:burnlens-guard off` / `/burnlens:burnlens-guard on` (terminal: `burnlens guard off` / `on`), or for a single session with `BURNLENS_GUARD=off`. The status line isn't a guardrail and keeps working either way. Change individual settings with `/burnlens:burnlens-guard`, e.g. `/burnlens:burnlens-guard read guard deny` or `/burnlens:burnlens-guard status line` (terminal: `burnlens guard status`, `burnlens guard set read_guard deny`, `burnlens guard reset`).
 
 Each check takes about 60 ms, and a guardrail that hits an internal error stays silent, so it can't break a session.
 
@@ -131,7 +133,7 @@ python3 scripts/run.py --demo
 
 ```
 .claude-plugin/     plugin.json + marketplace.json (this repo is its own marketplace)
-commands/           /burnlens, /burnlens-fix, /burnlens-savings, /burnlens-guard slash commands
+commands/           /burnlens:burnlens, /burnlens:burnlens-fix, /burnlens:burnlens-savings, /burnlens:burnlens-guard slash commands
 scripts/run.py      runs from a checkout without installing
 hooks/hooks.json    guardrail hooks (PreToolUse, PostToolUse, UserPromptSubmit) + SessionEnd sync
 src/burnlens/       parser, classifier, pricing, fixes (detectors + savings ledger), demo data, sync client, dashboard.html

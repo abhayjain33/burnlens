@@ -15,7 +15,7 @@ recommendations shaped like:
   action      what to change: settings_deny | claude_md | claude_task | command | settings_json
   metric      how `savings` re-measures it after the fix
 
-Applying is left to Claude (the /burnlens-fix command) so every change goes
+Applying is left to Claude (the /burnlens:burnlens-fix command) so every change goes
 through Claude Code's own approval prompts. `mark_applied` records a
 baseline; `savings` compares usage since then against it.
 """

@@ -12,7 +12,7 @@ Work through these with the user:
 
 1. If the arguments include `--demo`, these are example recommendations for synthetic data: show them as in step 2, say they're examples, and don't apply or record anything.
 
-   If the output above is not a JSON list, it's an error: explain it in plain words and stop. If the list is empty, say there is nothing to fix right now, mention `/burnlens-savings` for fixes applied earlier, and stop.
+   If the output above is not a JSON list, it's an error: explain it in plain words and stop. If the list is empty, say there is nothing to fix right now, mention `/burnlens:burnlens-savings` for fixes applied earlier, and stop.
 
 2. Show at most 8 recommendations, in the order given, as a numbered list. For each: the title; the saving as `~$X/month` (or "saving not quantifiable" when `usd_30d` is null) with its `confidence`. When `confidence` is `quality`, it costs more instead (`extra_usd_30d`): say so, and explain that it moves planning or review work to the strongest model because better plans save more in implementation than they cost. Then give one line of evidence from `detail`; and one line saying what the fix changes. Then ask which to apply: numbers, "all", or "none". Wait for the answer.
 
@@ -29,4 +29,4 @@ Work through these with the user:
    `bash "${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh" fixes applied <id>`
    If the user says a recommendation should never be shown again, run the same with `dismiss <id>` instead.
 
-5. Finish with a short summary: what was applied, the combined projected saving per month, and that `/burnlens-savings` will show measured before/after numbers once there has been some new usage (a few sessions).
+5. Finish with a short summary: what was applied, the combined projected saving per month, and that `/burnlens:burnlens-savings` will show measured before/after numbers once there has been some new usage (a few sessions).

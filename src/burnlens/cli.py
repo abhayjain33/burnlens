@@ -35,7 +35,7 @@ def _tok(n):
 
 
 def summary(data):
-    """Plain-text digest, so the /burnlens command can answer in chat too."""
+    """Plain-text digest, so the /burnlens:burnlens command can answer in chat too."""
     calls, tools = data["calls"], data["tools"]
     tok = sum(c["i"] + c["o"] + c["cr"] + c["cw"] for c in calls)
     usd = sum(c["usd"] or 0 for c in calls)
@@ -169,7 +169,7 @@ def savings_main(argv):
         print(json.dumps(rows, indent=2))
         return 0
     if not rows:
-        print("No fixes applied yet. Run `burnlens fixes` (or /burnlens-fix in Claude Code).")
+        print("No fixes applied yet. Run `burnlens fixes` (or /burnlens:burnlens-fix in Claude Code).")
         return 0
     for r in rows:
         head = f"- {r['title']} (applied {r['applied_at'][:10]}): {r['status']}"

@@ -672,7 +672,7 @@ function fixesSection() {
   $("#fixesCard").hidden = false;
   const total = sum(recs, (r) => r.usd_30d), measured = sum(saved, (r) => (r.status === "measured" ? r.saved_usd : 0));
   $("#fixesDesc").textContent = recs.length
-    ? "Specific changes found in your last 30 days. Model advice depends on the role: planning and review stay on your strongest model, bulk reading and routine implementation move to cheaper ones. Apply with /burnlens-fix in Claude Code; you approve each edit."
+    ? "Specific changes found in your last 30 days. Model advice depends on the role: planning and review stay on your strongest model, bulk reading and routine implementation move to cheaper ones. Apply with /burnlens:burnlens-fix in Claude Code; you approve each edit."
     : "No open recommendations right now.";
   $("#fixesTotal").replaceChildren(el("div", { class: "big" }, recs.length ? "~" + fmtUsd(total) + "/mo" : fmtUsd(measured)),
     el("div", { class: "small" }, recs.length ? `potential, from ${recs.length} fix${recs.length === 1 ? "" : "es"}` : "saved so far"));
@@ -695,7 +695,7 @@ function fixesSection() {
     el("td", { class: "hide-sm name", style: "font-size:12px" }, how(r.action))))
     : [el("tr", {}, el("td", { colspan: 5, class: "empty" }, "Nothing to fix right now."))]),
     ...(recs.length > 10 ? [el("tr", {}, el("td", { colspan: 5, class: "fix-evidence", style: "border:0" },
-      `+${recs.length - 10} more. Run /burnlens-fix in Claude Code (or burnlens fixes) to see them all.`))] : []));
+      `+${recs.length - 10} more. Run /burnlens:burnlens-fix in Claude Code (or burnlens fixes) to see them all.`))] : []));
   if (saved.length) {
     $("#savingsBlock").hidden = false;
     $("#savingsTable").replaceChildren(
