@@ -30,6 +30,9 @@ MCP = {  # server: {tool: (weight, mean result tokens)}
     "figma": {"get_design_context": (2, 16800), "get_screenshot": (2, 1600), "get_variable_defs": (1, 2100)},
     "context7": {"resolve-library-id": (2, 900), "get-library-docs": (3, 8600)},
 }
+DEMO_FILES = ["src/app.ts", "src/api/handlers.ts", "README.md", "package.json", "src/db/models.py",
+              "package-lock.json", "tests/test_api.py", "dist/bundle.min.js", "poetry.lock", "src/ui/theme.css"]
+DEMO_CMDS = ["npm test", "git status", "git diff", "python -m pytest", "ls", "npm run build", "rg", "docker compose"]
 AGENTS = [("Explore", 0.45), ("general-purpose", 0.25), ("Plan", 0.15), ("code-reviewer", 0.15)]
 SKILLS = ["pdf", "xlsx", "frontend-design", "code-review", "docx", "security-review"]
 TITLES = {
@@ -70,6 +73,24 @@ def _pick_tool(cat, rnd):
     return group, None, group, BUILTIN[group][1]
 
 
+def savings():
+    """Example measured-savings rows for the demo dashboard."""
+    now = datetime.now(timezone.utc)
+    return [
+        {"id": "demo:1", "title": "Stop reading generated files in web-dashboard", "kind": "large_file_reads",
+         "applied_at": (now - timedelta(days=12)).isoformat(), "status": "measured", "expected_usd_30d": 14.2,
+         "saved_tokens": 4_620_000, "saved_usd": 11.84, "units_after": 23, "unit": "session",
+         "detail": "231,000 → 18,400 tokens per session"},
+        {"id": "demo:2", "title": "Trim noisy command output in payments-api", "kind": "noisy_commands",
+         "applied_at": (now - timedelta(days=6)).isoformat(), "status": "measured", "expected_usd_30d": 6.1,
+         "saved_tokens": 1_150_000, "saved_usd": 2.37, "units_after": 41, "unit": "call",
+         "detail": "38,200 → 10,100 tokens per call"},
+        {"id": "demo:3", "title": "Remove unused MCP server 'figma' in docs-site", "kind": "unused_mcp_server",
+         "applied_at": (now - timedelta(days=2)).isoformat(), "status": "applied (not measurable)", "expected_usd_30d": None,
+         "saved_tokens": None, "saved_usd": None, "units_after": 0, "unit": None},
+    ]
+
+
 def generate(days=30, seed=7):
     rnd = random.Random(seed)
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
@@ -84,7 +105,8 @@ def generate(days=30, seed=7):
             cat = _pick(CATS, rnd)
             model = _pick(MODELS, rnd)
             t = date.replace(hour=rnd.randint(8, 19), minute=rnd.randint(0, 59))
-            sessions[sid] = {"title": rnd.choice(TITLES[cat]), "project": rnd.choice(PROJECTS),
+            project = rnd.choice(PROJECTS)
+            sessions[sid] = {"title": rnd.choice(TITLES[cat]), "project": project, "cwd": "/home/dev/" + project,
                              "start": t.isoformat(), "end": None}
             base_ctx = rnd.randint(18000, 32000)  # system prompt + tool schemas + CLAUDE.md
             ctx = base_ctx
@@ -113,6 +135,16 @@ def generate(days=30, seed=7):
                           "cx": rt * max(0, turns - k - 1)}
                     if name == "Skill":
                         tr["skill"] = rnd.choice(SKILLS)
+                    if name in ("Read", "Edit", "Write"):
+                        tr["path"] = f"/home/dev/{project}/" + rnd.choice(DEMO_FILES)
+                        if name == "Read" and tr["path"].endswith(("lock.json", ".lock", ".min.js")):
+                            tr["rt"] = int(tr["rt"] * 9)  # generated files are huge
+                            tr["cx"] = tr["rt"] * max(0, turns - k - 1)
+                    if name == "Bash":
+                        tr["cmd"] = rnd.choice(DEMO_CMDS)
+                        if tr["cmd"] in ("npm test", "python -m pytest"):
+                            tr["rt"] = int(tr["rt"] * 4)  # verbose test runners
+                            tr["cx"] = tr["rt"] * max(0, turns - k - 1)
                     tools.append(tr)
                     if name == "Agent":
                         atype = _pick(AGENTS, rnd)

@@ -36,6 +36,31 @@ Terminal flags: `--root DIR`, `--out PATH` (default `~/.burnlens/dashboard.html`
 - **Subagents and skills:** the tokens each consumed.
 - **Sessions:** context growth per call, with compactions visible as drops.
 - **Insights:** cache hit rate, oversized tool results, runaway sessions and similar.
+- **Recommended fixes and measured savings:** see below.
+
+## Fixes and measured savings
+
+burnlens doesn't stop at charts. It recommends specific changes, applies them with your approval, and then measures what they saved.
+
+```text
+/burnlens-fix        # see recommended fixes, pick which to apply; Claude makes each change and you approve it
+/burnlens-savings    # later: measured before → after for each applied fix
+```
+
+(From a terminal: `burnlens fixes`, `burnlens fixes applied <id>`, `burnlens fixes dismiss <id>`, `burnlens savings`.)
+
+| Detects | Example | Fix |
+|---|---|---|
+| Generated files read into context | `package-lock.json` read 16× = 15M tokens incl. re-sends | `permissions.deny` read rules in the project's `.claude/settings.local.json` |
+| Commands with huge output | `npm test` averaging 9k tokens per run | A `CLAUDE.md` line telling Claude to keep that output short |
+| MCP tools with huge results | `browser_snapshot` averaging 17k tokens per call | A `CLAUDE.md` line preferring narrower calls |
+| Oversized `CLAUDE.md` | 3k tokens on every request | Claude proposes a trimmed version as a diff |
+| Unused MCP servers | Configured, never called in 30 days | `claude mcp remove …` / disable in project settings |
+| Subagents on expensive models | Explore agents on Opus | Run them on Sonnet |
+
+Each recommendation shows a projected monthly saving and how far to trust it. **Measured** means cost that already happened and the fix removes. **Estimated** depends on a stated assumption, e.g. "output shrinks 60%". Unused MCP servers are **not quantifiable**. When you apply a fix, burnlens records a baseline in `~/.burnlens/fixes.json`. Once there are a few sessions of new usage, `/burnlens-savings` compares against it: tokens per session (or per call) before and after, times the usage since. The dashboard shows both lists too.
+
+File paths and command names used by the detectors stay on your machine; `burnlens sync` strips them before anything goes to an org server.
 
 ## Org mode
 
@@ -86,10 +111,10 @@ python3 scripts/run.py --demo
 
 ```
 .claude-plugin/     plugin.json + marketplace.json (this repo is its own marketplace)
-commands/           /burnlens slash command
+commands/           /burnlens, /burnlens-fix, /burnlens-savings slash commands
 scripts/run.py      runs from a checkout without installing
 hooks/hooks.json    SessionEnd hook → background `burnlens sync`
-src/burnlens/       parser, classifier, pricing, demo data, sync client, dashboard.html
+src/burnlens/       parser, classifier, pricing, fixes (detectors + savings ledger), demo data, sync client, dashboard.html
 src/burnlens/server FastAPI + Postgres org server (`pip install ".[server]"`)
 deploy/             docker-compose.yml; Dockerfile at repo root
 tests/              unit tests; test_server.py runs when DATABASE_URL is set

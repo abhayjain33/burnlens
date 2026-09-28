@@ -89,6 +89,12 @@ tr.selected td { background: var(--surface-2); }
 tr.child td { color: var(--ink-2); } tr.child td:first-child { padding-left: 28px; }
 .rank { color: var(--muted); width: 28px; font-variant-numeric: tabular-nums; }
 .name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; word-break: break-all; }
+.fix-total { text-align: right; }
+.fix-total .big { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.fix-total .small { color: var(--muted); font-size: 12px; }
+.fix-evidence { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.conf { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
+.conf.measured { border-color: var(--good); } .conf.estimated { border-color: var(--warning); }
 .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); margin-left: 6px; font-family: system-ui, sans-serif; }
 .inbar { position: relative; min-width: 120px; }
 .inbar .track { height: 8px; border-radius: 0 4px 4px 0; background: var(--bar); }
@@ -159,6 +165,19 @@ svg .baseline { stroke: var(--axis); stroke-width: 1; }
       <h2>Insights</h2>
       <p class="desc">Rule-based observations on the current filter.</p>
       <div class="grid" id="insights" style="gap:10px"></div>
+    </div>
+  </div>
+
+  <div class="card section" id="fixesCard" hidden>
+    <div class="card-head">
+      <div><h2>Recommended fixes</h2><p class="desc" id="fixesDesc"></p></div>
+      <div class="fix-total" id="fixesTotal"></div>
+    </div>
+    <div class="scroll"><table id="fixesTable"></table></div>
+    <div id="savingsBlock" hidden>
+      <h2 style="margin-top:18px">Measured savings</h2>
+      <p class="desc">Usage since each fix was applied, compared with the baseline recorded when you applied it.</p>
+      <div class="scroll"><table id="savingsTable"></table></div>
     </div>
   </div>
 
@@ -625,6 +644,48 @@ function insights(v) {
     .map((i) => el("div", { class: "insight " + i.lvl }, el("div", { class: "lvl", style: "color:var(--muted)" }, (i.lvl === "good" ? "✓ " : i.lvl === "info" ? "ℹ " : "⚠ ") + LV[i.lvl]), el("b", {}, i.title), i.body)));
 }
 
+// ---------- fixes (local only) ----------
+function fixesSection() {
+  const recs = DATA.fixes || [], saved = DATA.savings || [];
+  if (DATA.org || (!recs.length && !saved.length)) return;
+  $("#fixesCard").hidden = false;
+  const total = sum(recs, (r) => r.usd_30d), measured = sum(saved, (r) => (r.status === "measured" ? r.saved_usd : 0));
+  $("#fixesDesc").textContent = recs.length
+    ? "Specific changes that cut waste found in your last 30 days. Apply them with /burnlens-fix in Claude Code; you approve each edit."
+    : "No open recommendations right now.";
+  $("#fixesTotal").replaceChildren(el("div", { class: "big" }, recs.length ? "~" + fmtUsd(total) + "/mo" : fmtUsd(measured)),
+    el("div", { class: "small" }, recs.length ? `potential, from ${recs.length} fix${recs.length === 1 ? "" : "es"}` : "saved so far"));
+  const base = (f) => (f || "").split(/[\\/]/).pop();
+  const how = (a) => ({
+    settings_deny: () => "Block reads: " + a.rules.join(", "),
+    settings_json: () => "Disable in " + base(a.file),
+    claude_md: () => "Add a line to " + base(a.file),
+    claude_task: () => a.file ? "Claude edits " + base(a.file) + " (you approve the diff)" : "Claude walks you through it",
+    command: () => a.command,
+  }[a.type] || (() => ""))();
+  const head = el("tr", {}, el("th", { class: "rank" }, "#"), el("th", {}, "Fix"), el("th", { class: "num" }, "Saving / mo"),
+    el("th", {}, "Confidence"), el("th", { class: "hide-sm" }, "What changes"));
+  $("#fixesTable").replaceChildren(head, ...(recs.length ? recs.slice(0, 10).map((r, i) => el("tr", {},
+    el("td", { class: "rank" }, i + 1),
+    el("td", {}, el("div", {}, r.title), el("div", { class: "fix-evidence" }, (r.detail || "").split("\n").slice(0, 2).join(" ").trim().slice(0, 160))),
+    el("td", { class: "num" }, r.usd_30d == null ? "–" : "~" + fmtUsd(r.usd_30d)),
+    el("td", {}, el("span", { class: "conf " + r.confidence }, r.confidence)),
+    el("td", { class: "hide-sm name", style: "font-size:12px" }, how(r.action))))
+    : [el("tr", {}, el("td", { colspan: 5, class: "empty" }, "Nothing to fix right now."))]),
+    ...(recs.length > 10 ? [el("tr", {}, el("td", { colspan: 5, class: "fix-evidence", style: "border:0" },
+      `+${recs.length - 10} more. Run /burnlens-fix in Claude Code (or burnlens fixes) to see them all.`))] : []));
+  if (saved.length) {
+    $("#savingsBlock").hidden = false;
+    $("#savingsTable").replaceChildren(
+      el("tr", {}, el("th", {}, "Fix"), el("th", { class: "hide-sm" }, "Applied"), el("th", {}, "Status"), el("th", { class: "hide-sm" }, "Before → after"), el("th", { class: "num" }, "Saved")),
+      ...saved.map((r) => el("tr", {}, el("td", {}, r.title),
+        el("td", { class: "hide-sm", style: "white-space:nowrap" }, new Date(r.applied_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
+        el("td", {}, r.status === "measuring" ? `measuring (${r.units_after} ${r.unit || "unit"}s so far)` : r.status),
+        el("td", { class: "hide-sm" }, r.detail || "–"),
+        el("td", { class: "num" }, r.saved_usd == null ? "–" : fmtUsd(r.saved_usd) + (r.saved_tokens ? " · " + fmtTok(r.saved_tokens) : "")))));
+  }
+}
+
 // ---------- org mode ----------
 const personName = (email) => (DATA.people && DATA.people[email] && DATA.people[email].name) || email || "";
 function teams(v) {
@@ -726,6 +787,7 @@ function init() {
   $("#model").addEventListener("change", (e) => { state.model = e.target.value; render(); });
   $("#inclAgents").addEventListener("change", (e) => { state.agents = e.target.checked; render(); });
   if (DATA.org) initOrg();
+  fixesSection();
   seg("#range", "days", Number); seg("#dailyMetric", "dailyM"); seg("#catMetric", "catM"); seg("#modelMetric", "modelM"); seg("#toolMetric", "toolM");
   $("#toolTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.toolTab = b.dataset.t; $("#toolTabs").querySelectorAll("button").forEach((x) => x.setAttribute("aria-selected", String(x === b))); render(); });
   $("#themeBtn").addEventListener("click", () => {

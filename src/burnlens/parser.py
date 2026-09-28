@@ -66,6 +66,25 @@ def split_tool(name):
     return None, name
 
 
+MULTIWORD = {"npm", "npx", "pnpm", "yarn", "bun", "cargo", "go", "uv", "poetry", "pip", "python", "python3",
+             "docker", "git", "kubectl", "make", "gradle", "mvn", "dotnet", "terraform", "gh"}
+
+
+def command_head(command):
+    """'cd app && npm run test -- --watch' -> 'npm run test'; 'pytest -x tests/' -> 'pytest'."""
+    for part in reversed(command.replace("||", "&&").replace(";", "&&").split("&&")):
+        words = [w for w in part.strip().split() if "=" not in w or w.startswith("-")]
+        if not words or words[0] in ("cd", "export", "source", "echo"):
+            continue
+        head = os.path.basename(words[0])
+        if head in MULTIWORD and len(words) > 2 and words[1] in ("run", "exec", "-m"):
+            return " ".join([head] + words[1:3])  # npm run test, python -m pytest
+        if head in MULTIWORD and len(words) > 1 and not words[1].startswith("-"):
+            return head + " " + words[1]
+        return head
+    return None
+
+
 def _prompt_text(msg):
     c = msg.get("content")
     if isinstance(c, str):
@@ -124,7 +143,8 @@ def parse_file(path, sessions, calls, tools, invocations, compactions, redact):
             elif t == "summary" and d.get("summary") and not s["title"]:
                 s["title"] = d["summary"]
             if d.get("cwd") and not s["project"]:
-                s["project"] = os.path.basename(d["cwd"].rstrip("/")) or d["cwd"]
+                s["project"] = os.path.basename(d["cwd"].rstrip("/\\")) or d["cwd"]
+                s["cwd"] = d["cwd"]  # local only: used by `burnlens fixes`, stripped by sync
             ts = d.get("timestamp")
             if ts:
                 s["start"] = min(s["start"] or ts, ts)
@@ -214,6 +234,12 @@ def parse_file(path, sessions, calls, tools, invocations, compactions, redact):
                       "a": calls[call_idx]["a"]}
                 if name == "Skill":
                     tr["skill"] = inp.get("skill") or inp.get("command")
+                # local only (used by `burnlens fixes`, stripped by sync): which file / command
+                fp = inp.get("file_path") or inp.get("notebook_path")
+                if fp:
+                    tr["path"] = fp
+                if name == "Bash" and inp.get("command"):
+                    tr["cmd"] = command_head(inp["command"])
                 if name in ("Agent", "Task"):
                     invocations.append({"tuid": b.get("id"), "s": sid, "ts": ts,
                                         "type": inp.get("subagent_type") or "general-purpose",

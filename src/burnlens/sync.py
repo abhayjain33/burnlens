@@ -29,6 +29,7 @@ CONFIG = os.path.join(HOME, "config.json")
 STATE = os.path.join(HOME, "sync-state.json")
 LOCK = os.path.join(HOME, "sync.lock")
 CHUNK = 2000
+LOCAL_ONLY = ("path", "cmd")
 
 
 def _read_json(path):
@@ -85,6 +86,13 @@ def _session_of(path, root):
     return rel[-3] if len(rel) >= 3 and rel[-2] == "subagents" else os.path.splitext(rel[-1])[0]
 
 
+def strip_local(tools, sessions):
+    """File paths, commands and working directories stay on this machine."""
+    tools = [{k: v for k, v in t.items() if k not in LOCAL_ONLY} for t in tools]
+    sessions = {k: {f: v for f, v in s.items() if f != "cwd"} for k, s in sessions.items()}
+    return tools, sessions
+
+
 def _post(cfg, payload):
     req = urllib.request.Request(
         cfg["server"] + "/api/ingest",
@@ -137,7 +145,7 @@ def run(full=False, quiet=False, root=None):
         data = parser.load(root, redact=os.environ.get("BURNLENS_SEND_TITLES") != "1")
         keep = lambda rows: [r for r in rows if r["s"] in wanted]  # noqa: E731
         calls, tools, agents = keep(data["calls"]), keep(data["tools"]), keep(data["agents"])
-        sessions = {k: v for k, v in data["sessions"].items() if k in wanted}
+        tools, sessions = strip_local(tools, {k: v for k, v in data["sessions"].items() if k in wanted})
         if os.environ.get("BURNLENS_SEND_TITLES") != "1":
             for s in sessions.values():
                 s["title"] = None

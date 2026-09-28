@@ -8,7 +8,7 @@ import sys
 import webbrowser
 from collections import Counter, defaultdict
 
-from . import __version__, demo, parser, sync
+from . import __version__, demo, fixes, parser, sync
 
 
 def template_text():
@@ -98,6 +98,78 @@ def connect_main(argv):
     return sync.run(full=True)
 
 
+def _fmt_rec(i, r):
+    money = f"~${r['usd_30d']:,.2f}/mo" if r["usd_30d"] is not None else "saving not quantifiable"
+    toks = f", ~{_tok(r['tokens_30d'])} tokens/mo" if r.get("tokens_30d") else ""
+    lines = [f"{i}. [{r['id']}] {r['title']}", f"   {money}{toks} ({r['confidence']})"]
+    lines += ["   " + ln for ln in r["detail"].splitlines()]
+    a = r["action"]
+    how = {"settings_deny": lambda: f"add permissions.deny {a['rules']} to {a['file']}",
+           "settings_json": lambda: f"merge {a['append']} into {a['file']}",
+           "claude_md": lambda: f"append to {a['file']}:\n      " + a["text"].replace("\n", "\n      "),
+           "claude_task": lambda: "ask Claude: " + a["prompt"],
+           "command": lambda: "run: " + a["command"]}[a["type"]]()
+    lines.append("   Fix: " + how)
+    return "\n".join(lines)
+
+
+def fixes_main(argv):
+    ap = argparse.ArgumentParser(prog="burnlens fixes", description="Recommend fixes for token waste.")
+    ap.add_argument("action", nargs="?", choices=["list", "applied", "dismiss"], default="list")
+    ap.add_argument("id", nargs="?", help="recommendation id, for applied / dismiss")
+    ap.add_argument("--days", type=int, default=30, help="history window to analyse (default 30)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--root", help="transcripts dir")
+    args = ap.parse_args(argv)
+    data = parser.load(args.root)
+    if args.action == "dismiss":
+        fixes.dismiss(args.id)
+        print(f"Dismissed {args.id}; it won't be recommended again.")
+        return 0
+    recs = fixes.recommend(data, args.days)
+    if args.action == "applied":
+        rec = next((r for r in recs if r["id"] == args.id), None)
+        if not rec:
+            print(f"No open recommendation with id {args.id} (already applied, dismissed, or no longer detected).")
+            return 1
+        fixes.mark_applied(data, rec, args.days)
+        print(f"Recorded {args.id} as applied with a baseline from the last {args.days} days. "
+              "`burnlens savings` will measure it once there is new usage.")
+        return 0
+    if args.json:
+        print(json.dumps(recs, indent=2))
+        return 0
+    if not recs:
+        print("No fixes to recommend right now. Nice.")
+        return 0
+    total = sum(r["usd_30d"] or 0 for r in recs)
+    print(f"{len(recs)} recommended fixes, ~${total:,.2f}/month API-equivalent (projected from the last {args.days} days):\n")
+    print("\n\n".join(_fmt_rec(i + 1, r) for i, r in enumerate(recs)))
+    return 0
+
+
+def savings_main(argv):
+    ap = argparse.ArgumentParser(prog="burnlens savings", description="Measured effect of applied fixes.")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--root", help="transcripts dir")
+    args = ap.parse_args(argv)
+    rows = fixes.savings(parser.load(args.root))
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    if not rows:
+        print("No fixes applied yet. Run `burnlens fixes` (or /burnlens-fix in Claude Code).")
+        return 0
+    for r in rows:
+        head = f"- {r['title']} (applied {r['applied_at'][:10]}): {r['status']}"
+        if r["status"] == "measured":
+            head += f", saved ~${r['saved_usd']:,.2f}" + (f" / {_tok(r['saved_tokens'])} tokens" if r.get("saved_tokens") else "")
+        elif r["status"] == "measuring":
+            head += f" ({r['units_after']} {r['unit'] or 'unit'}s of new usage so far)"
+        print(head + (f"\n    {r['detail']}" if r.get("detail") else ""))
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     for stream in (sys.stdout, sys.stderr):  # Windows consoles may not be UTF-8
@@ -109,8 +181,13 @@ def main(argv=None):
         sys.exit(sync_main(argv[1:]))
     if argv[:1] == ["connect"]:
         sys.exit(connect_main(argv[1:]))
+    if argv[:1] == ["fixes"]:
+        sys.exit(fixes_main(argv[1:]))
+    if argv[:1] == ["savings"]:
+        sys.exit(savings_main(argv[1:]))
     ap = argparse.ArgumentParser(prog="burnlens", description=__doc__,
-                                 epilog="Org mode: `burnlens connect --server URL --token T`, then `burnlens sync`.")
+                                 epilog="More: `burnlens fixes` (what to change), `burnlens savings` (what changing it saved), "
+                                        "`burnlens connect --server URL --token T` (org mode).")
     ap.add_argument("--root", help="transcripts dir (default: ~/.claude/projects or $CLAUDE_CONFIG_DIR/projects)")
     ap.add_argument("--out", default=os.path.expanduser("~/.burnlens/dashboard.html"), help="output HTML path")
     ap.add_argument("--json", metavar="PATH", help="also write the normalized dataset as JSON")
@@ -127,6 +204,15 @@ def main(argv=None):
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(data, f)
     data["version"] = __version__
+    if args.demo:
+        data["fixes"], data["savings"] = fixes.recommend(data, local=False), demo.savings()
+    else:
+        data["fixes"], data["savings"] = fixes.recommend(data), fixes.savings(data)
+    if args.redact:
+        for t in data["tools"]:
+            t.pop("path", None), t.pop("cmd", None)
+        for s in data["sessions"].values():
+            s.pop("cwd", None)
     path = render(data, args.out)
     print(summary(data))
     print(f"Dashboard: {os.path.abspath(path)}")
