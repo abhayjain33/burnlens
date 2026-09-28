@@ -7,13 +7,18 @@ import pathlib
 import sys
 import webbrowser
 from collections import Counter, defaultdict
-from importlib import resources
 
 from . import __version__, demo, parser, sync
 
 
+def template_text():
+    # importlib.resources.files needs 3.9; the file sits next to this module anyway
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html"), encoding="utf-8") as f:
+        return f.read()
+
+
 def render(data, out):
-    template = resources.files("burnlens").joinpath("dashboard.html").read_text(encoding="utf-8")
+    template = template_text()
     # Escape "</" so transcript text can never close the <script> tag.
     payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

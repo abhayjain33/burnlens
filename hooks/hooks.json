@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/run.py\" sync --background",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/burnlens.sh\" sync --background",
             "timeout": 10
           }
         ]

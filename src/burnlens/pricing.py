@@ -27,7 +27,10 @@ def rates(model):
     """Longest matching prefix wins, so 'claude-opus-5-5' beats 'claude-opus-5'."""
     if not model:
         return None
-    m = model.removeprefix("anthropic.").removeprefix("us.anthropic.")
+    m = model
+    for prefix in ("us.anthropic.", "anthropic."):
+        if m.startswith(prefix):
+            m = m[len(prefix):]
     best = None
     for prefix in PRICES:
         if m.startswith(prefix) and (best is None or len(prefix) > len(best)):

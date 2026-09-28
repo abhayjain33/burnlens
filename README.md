@@ -13,7 +13,7 @@ It reads the transcripts Claude Code already writes to `~/.claude/projects`. It 
 /plugin install burnlens@burnlens
 ```
 
-Then type **`/burnlens`** in any session. It builds the dashboard, opens it in your browser, and Claude summarizes the highlights in chat.
+Needs Python 3.8+ (`python3`, `python` or Windows' `py` launcher; burnlens finds whichever works). Then type **`/burnlens`** in any session. It builds the dashboard, opens it in your browser, and Claude summarizes the highlights in chat.
 
 Arguments: `/burnlens --redact` hides session titles, `/burnlens --demo` shows synthetic data, and `/burnlens --no-open` skips opening the browser.
 
