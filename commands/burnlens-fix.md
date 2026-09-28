@@ -14,7 +14,9 @@ Work through these with the user:
 
    If the output above is not a JSON list, it's an error: explain it in plain words and stop. If the list is empty, say there is nothing to fix right now, mention `/burnlens-savings` for fixes applied earlier, and stop.
 
-2. Show at most 8 recommendations, in the order given, as a numbered list. For each: the title; the saving as `~$X/month` (or "saving not quantifiable" when `usd_30d` is null) with its `confidence`; one line of evidence from `detail`; and one line saying what the fix changes. Then ask which to apply: numbers, "all", or "none". Wait for the answer.
+2. Show at most 8 recommendations, in the order given, as a numbered list. For each: the title; the saving as `~$X/month` (or "saving not quantifiable" when `usd_30d` is null) with its `confidence`. When `confidence` is `quality`, it costs more instead (`extra_usd_30d`): say so, and explain that it moves planning or review work to the strongest model because better plans save more in implementation than they cost. Then give one line of evidence from `detail`; and one line saying what the fix changes. Then ask which to apply: numbers, "all", or "none". Wait for the answer.
+
+   Model advice follows each agent's role: planning and review agents are never moved to a cheaper model. Don't suggest otherwise.
 
 3. Apply each chosen fix according to `action.type`, using your normal file and shell tools so the user approves every change:
    - `settings_deny`: in `action.file` (create it as `{}` if missing), add each of `action.rules` to `permissions.deny` without duplicating existing entries or touching anything else. Mention `action.note`.

@@ -154,7 +154,7 @@ def generate(days=30, seed=7):
                         for _ in range(sub):
                             so = int(rnd.lognormvariate(5.6, 0.7))
                             scw = rnd.randint(800, 6000)
-                            sm = "claude-haiku-4-5" if atype == "Explore" else model
+                            sm = "claude-haiku-4-5" if atype == "Explore" and rnd.random() < 0.5 else model
                             srec = {"ts": t.isoformat(), "s": sid, "m": sm, "i": 3, "o": so, "cr": sub_ctx,
                                     "cw": scw, "th": 0, "a": atype, "fast": False,
                                     "c": "Analysis" if atype in ("Explore", "Plan") else turn_cat}

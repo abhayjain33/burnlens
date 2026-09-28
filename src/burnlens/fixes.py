@@ -48,7 +48,10 @@ OUTPUT_REDUCTION = 0.6      # assumed cut in command output after the CLAUDE.md 
 MCP_REDUCTION = 0.5
 EXPENSIVE = ("claude-opus", "claude-fable", "claude-mythos")
 CHEAPER_MODEL = "claude-sonnet-5"
+STRONG_MODEL = "claude-opus-5-5"
 MIN_SUBAGENT_USD_30D = 1.0  # projected monthly saving worth suggesting a model switch
+MIN_WORKFLOW_USD_30D = 2.0
+WORSE_MARGIN = 0.10         # flag a fix whose cost per unit rose more than this
 
 
 # ---------- small helpers ----------
@@ -346,47 +349,169 @@ def _unused_mcp_servers(ctx):
     return out
 
 
+# Model advice is role-aware: reasoning work (planning, review, architecture) is where a
+# strong model pays for itself, because a better plan saves more downstream than it
+# costs; bulk reading and routine implementation are where a cheaper model holds up.
+REASONING_ROLES = re.compile(r"plan|architect|review|design|security|debug|reason", re.I)
+BULK_ROLES = re.compile(r"explor|search|scan|find|lookup|index|fetch|research|read", re.I)
+CHEAP = ("claude-sonnet", "claude-haiku")
+OPUS = "claude-opus"
+
+
+def agent_role(agent, categories):
+    """'reasoning' | 'bulk' | 'implementation' | None, from the agent's name and what it did."""
+    if REASONING_ROLES.search(agent):
+        return "reasoning"
+    if BULK_ROLES.search(agent):
+        return "bulk"
+    total = sum(categories.values())
+    if total and categories.get("Development", 0) / total >= 0.6:
+        return "implementation"
+    return None
+
+
+def _as_model(c, model):
+    r = rates(model)
+    return (c["i"] * r[0] + c["o"] * r[1] + c["cr"] * r[2] + c["cw"] * r[0] * 1.25) / 1e6
+
+
+def _agent_file(ctx, agent, sessions):
+    cands = [os.path.join(HOME, ".claude", "agents", agent + ".md")] + [
+        os.path.join(cwd, ".claude", "agents", agent + ".md") for cwd in {ctx.cwd(s) for s in sessions} - {None}]
+    return next((p for p in cands if os.path.exists(p)), None)
+
+
 def _subagent_models(ctx):
-    agg = defaultdict(lambda: {"tok": 0, "usd": 0.0, "cheap": 0.0, "runs": set(), "model": None})
-    cheap = rates(CHEAPER_MODEL)
+    # Split each agent's usage by model tier: a downgrade can only save on runs that used an
+    # expensive model, and an upgrade only costs extra on runs that used a cheap one.
+    agg = defaultdict(lambda: {"exp": {"usd": 0.0, "cheap": 0.0, "tok": 0, "runs": set(), "models": defaultdict(int)},
+                               "low": {"current": 0.0, "strong": 0.0, "runs": set(), "models": defaultdict(int)},
+                               "cats": defaultdict(int), "runs": set()})
     for c in ctx.calls:
-        if not c.get("a") or not (c.get("m") or "").startswith(EXPENSIVE) or c.get("usd") is None:
+        m = c.get("m") or ""
+        if not c.get("a") or c.get("usd") is None or not rates(m):
             continue
-        e = agg[c["a"]]
-        e["tok"] += c["i"] + c["o"] + c["cr"] + c["cw"]
-        e["usd"] += c["usd"]
-        e["cheap"] += (c["i"] * cheap[0] + c["o"] * cheap[1] + c["cr"] * cheap[2] + c["cw"] * cheap[0] * 1.25) / 1e6
+        e, tok = agg[c["a"]], c["i"] + c["o"] + c["cr"] + c["cw"]
+        e["cats"][c.get("c") or "?"] += tok
         e["runs"].add(c["s"])
-        e["model"] = c["m"]
+        if m.startswith(EXPENSIVE):
+            x = e["exp"]
+            x["usd"] += _as_model(c, m)  # like-for-like with the Sonnet estimate below
+            x["cheap"] += _as_model(c, CHEAPER_MODEL)
+            x["tok"] += tok
+        elif m.startswith(CHEAP):
+            x = e["low"]
+            x["current"] += _as_model(c, m)
+            x["strong"] += _as_model(c, STRONG_MODEL)
+        else:
+            continue
+        x["runs"].add(c["s"])
+        x["models"][m] += tok
     out = []
     for agent, e in agg.items():
-        saving = e["usd"] - e["cheap"]
+        role = agent_role(agent, e["cats"])
+        file = _agent_file(ctx, agent, e["runs"])
+        low, exp = e["low"], e["exp"]
+
+        if role == "reasoning":
+            if len(low["runs"]) < 2:
+                continue  # already on a strong model, or too little evidence
+            model = max(low["models"], key=low["models"].get)
+            extra = ctx.scale(low["strong"] - low["current"])
+            out.append({
+                "id": _id("agentquality", agent), "kind": "reasoning_model",
+                "title": f"Run '{agent}' on your strongest model, not {model.replace('claude-', '')}",
+                "detail": f"{len(low['runs'])} of {len(e['runs'])} '{agent}' runs used {model}. It does planning or review "
+                          f"work, where a stronger model pays for itself: a better plan means fewer wrong turns and less "
+                          f"rework in the (much larger) implementation that follows. Switching costs about "
+                          f"${max(extra, 0):,.2f}/month more at current volume.",
+                "tokens_30d": None, "usd_30d": None, "extra_usd_30d": round(max(extra, 0), 2), "confidence": "quality",
+                "scope": None, "role": role, "action": _model_action(agent, file, "opus", model),
+                "metric": {"type": "subagent_model", "agent": agent},
+            })
+            continue
+        if role not in ("bulk", "implementation") or not exp["runs"]:
+            continue  # unknown roles get no model advice
+        saving = exp["usd"] - exp["cheap"]
         if ctx.scale(saving) < MIN_SUBAGENT_USD_30D:
             continue
-        files = [p for p in [os.path.join(HOME, ".claude", "agents", agent + ".md")] +
-                 [os.path.join(cwd, ".claude", "agents", agent + ".md") for cwd in {ctx.cwd(s) for s in e["runs"]} - {None}]
-                 if os.path.exists(p)]
-        if files:
-            action = {"type": "claude_task", "file": files[0], "prompt": (
-                f"In {files[0]}, set `model: sonnet` in the YAML frontmatter (add the field if missing). "
-                f"Show the diff and wait for approval.")}
-        else:
-            action = {"type": "claude_task", "prompt": (
-                f"'{agent}' is a built-in subagent currently running on {e['model']}. Explain the options for running this "
-                f"kind of work on a cheaper model (for example a custom agent in ~/.claude/agents/ with `model: sonnet`), "
-                f"and create one only if I approve.")}
+        model = max(exp["models"], key=exp["models"].get)
+        why = ("It mostly reads and summarizes (high volume, little judgment), which Sonnet handles well; "
+               "Haiku is a cheaper option for pure file search."
+               if role == "bulk" else
+               "It mostly writes code. From a clear plan, Sonnet handles routine implementation well; keep the "
+               "strong model for planning and switch back for tricky changes.")
         out.append({
             "id": _id("agentmodel", agent), "kind": "subagent_model",
-            "title": f"Run '{agent}' subagents on Sonnet instead of {e['model'].replace('claude-', '')}",
-            "detail": f"{e['tok']:,} tokens across {len(e['runs'])} sessions cost ${e['usd']:.2f}; the same tokens on "
-                      f"{CHEAPER_MODEL} would cost ${e['cheap']:.2f}. Assumes Sonnet does the job in a similar number of tokens.",
+            "title": f"Run '{agent}' subagents on Sonnet instead of {model.replace('claude-', '')}",
+            "detail": f"{why}\n{len(exp['runs'])} of {len(e['runs'])} runs used an Opus-class model: {exp['tok']:,} tokens, "
+                      f"${exp['usd']:.2f}; on {CHEAPER_MODEL} about ${exp['cheap']:.2f}. Cache reads cost the same on both, "
+                      f"so the saving comes from output and cache writes. Planning and review agents are left on the strong model.",
             "tokens_30d": None, "usd_30d": round(ctx.scale(saving), 2), "confidence": "estimated", "scope": None,
-            "action": action, "metric": {"type": "subagent_model", "agent": agent},
+            "role": role, "action": _model_action(agent, file, "sonnet", model),
+            "metric": {"type": "subagent_model", "agent": agent},
         })
     return out
 
 
-DETECTORS = [_large_file_reads, _noisy_commands, _heavy_mcp_tools, _big_instructions, _unused_mcp_servers, _subagent_models]
+def _model_action(agent, file, target, current):
+    if file:
+        return {"type": "claude_task", "file": file, "prompt": (
+            f"In {file}, set `model: {target}` in the YAML frontmatter (add the field if missing). "
+            f"Show the diff and wait for approval.")}
+    return {"type": "claude_task", "prompt": (
+        f"'{agent}' is a built-in subagent currently running on {current}. Create a custom agent in ~/.claude/agents/ "
+        f"for the same job with `model: {target}` (for exploration: read-only tools), and tell me how to make Claude "
+        f"prefer it. Do not set CLAUDE_CODE_SUBAGENT_MODEL: it changes every subagent, including planning ones. "
+        f"Show the file and wait for approval before creating it.")}
+
+
+IMPLEMENT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+
+
+def _plan_then_implement(ctx):
+    """Main-thread sessions on Opus that plan and then implement at Opus prices.
+    `opusplan` keeps Opus for plan mode and uses Sonnet once implementation starts."""
+    starts, planned = {}, set()
+    for t in sorted(ctx.tools, key=lambda t: t.get("ts") or ""):
+        if t.get("a") or t["s"] in starts:
+            continue
+        if t["n"] == "ExitPlanMode" or t["n"] in IMPLEMENT_TOOLS:
+            starts[t["s"]] = t.get("ts") or ""
+            if t["n"] == "ExitPlanMode":
+                planned.add(t["s"])
+    impl_usd = impl_cheap = 0.0
+    sessions = set()
+    for c in ctx.calls:
+        s = c["s"]
+        if c.get("a") or s not in starts or not (c.get("m") or "").startswith(OPUS) or c.get("usd") is None:
+            continue
+        if (c.get("ts") or "") >= starts[s]:
+            impl_usd += c["usd"]
+            impl_cheap += _as_model(c, CHEAPER_MODEL)
+            sessions.add(s)
+    saving = ctx.scale(impl_usd - impl_cheap)
+    if len(sessions) < 2 or saving < MIN_WORKFLOW_USD_30D:
+        return []
+    return [{
+        "id": _id("opusplan", "main"), "kind": "plan_then_implement",
+        "title": "Plan with Opus, implement with Sonnet (/model opusplan)",
+        "detail": f"In {len(sessions)} Opus sessions, the work from the first edit onwards (implementation) cost "
+                  f"${impl_usd:.2f}; on Sonnet about ${impl_cheap:.2f}. "
+                  + (f"{len(planned & sessions)} of them started in plan mode. " if planned & sessions else
+                     "None used plan mode; opusplan works best when bigger tasks start there. ")
+                  + "With `opusplan`, plan mode stays on Opus, so planning quality is unchanged, and Sonnet carries out "
+                    "the plan. Switch back with /model opus for changes that need deeper reasoning.",
+        "tokens_30d": None, "usd_30d": round(saving, 2), "confidence": "estimated", "scope": None, "role": "workflow",
+        "action": {"type": "command", "command": "/model opusplan",
+                   "note": 'Or set "model": "opusplan" in ~/.claude/settings.json to make it your default. '
+                           "Works best when you start bigger tasks in plan mode (Shift+Tab)."},
+        "metric": {"type": "impl_phase", "model_prefix": OPUS},
+    }]
+
+
+DETECTORS = [_large_file_reads, _noisy_commands, _heavy_mcp_tools, _big_instructions, _unused_mcp_servers,
+             _subagent_models, _plan_then_implement]
 
 
 # ---------- ledger ----------
@@ -407,7 +532,7 @@ def save_ledger(ledger):
     os.replace(tmp, LEDGER)
 
 
-TRANSCRIPT_ONLY = [_large_file_reads, _noisy_commands, _heavy_mcp_tools, _subagent_models]
+TRANSCRIPT_ONLY = [_large_file_reads, _noisy_commands, _heavy_mcp_tools, _subagent_models, _plan_then_implement]
 
 
 def recommend(data, days=30, local=True):
@@ -445,9 +570,18 @@ def _metric(ctx, m):
         return {"units": len(calls), "unit": "call", "size": size,
                 "cr_price": (sum((rates(c["m"]) or (0, 0, 0))[2] for c in calls) / len(calls)) if calls else 0}
     if m["type"] == "subagent_model":
+        # per session that used the agent: a cheaper model that needs more turns shows up as a loss
         rows = [c for c in ctx.calls if c.get("a") == m["agent"]]
-        tok = sum(c["i"] + c["o"] + c["cr"] + c["cw"] for c in rows)
-        return {"units": tok, "unit": "token", "tok": tok, "usd": sum(c.get("usd") or 0 for c in rows)}
+        return {"units": len({c["s"] for c in rows}), "unit": "session", "per": "run",
+                "tok": sum(c["i"] + c["o"] + c["cr"] + c["cw"] for c in rows), "usd": sum(c.get("usd") or 0 for c in rows)}
+    if m["type"] == "impl_phase":
+        starts = {}
+        for t in sorted(ctx.tools, key=lambda t: t.get("ts") or ""):
+            if not t.get("a") and t["s"] not in starts and (t["n"] == "ExitPlanMode" or t["n"] in IMPLEMENT_TOOLS):
+                starts[t["s"]] = t.get("ts") or ""
+        rows = [c for c in ctx.calls if not c.get("a") and c["s"] in starts]
+        return {"units": len({c["s"] for c in rows}), "unit": "session", "tok": sum(c["i"] + c["o"] + c["cr"] + c["cw"] for c in rows),
+                "usd": sum(c.get("usd") or 0 for c in rows)}
     return {"units": 0, "unit": None}
 
 
@@ -486,10 +620,17 @@ def savings(data, min_units=3):
                 row.update(status="measured", saved_tokens=cut * after["units"],
                            saved_usd=round(cut * after["units"] * after["cr_price"] / 1e6, 4))
         elif after.get("units", 0) >= min_units and before.get("units"):
-            rate_tok = before["tok"] / before["units"] - after["tok"] / after["units"]
-            rate_usd = before["usd"] / before["units"] - after["usd"] / after["units"]
-            row.update(status="measured", saved_usd=round(rate_usd * after["units"], 4),
-                       saved_tokens=None if m["type"] == "subagent_model" else int(rate_tok * after["units"]))
-            row["detail"] = (f"{before['tok'] / before['units']:,.0f} → {after['tok'] / after['units']:,.0f} tokens per {after['unit']}")
+            b_tok, a_tok = before["tok"] / before["units"], after["tok"] / after["units"]
+            b_usd, a_usd = before["usd"] / before["units"], after["usd"] / after["units"]
+            model_fix = m["type"] in ("subagent_model", "impl_phase")
+            row.update(status="measured", saved_usd=round((b_usd - a_usd) * after["units"], 4),
+                       saved_tokens=None if model_fix else int((b_tok - a_tok) * after["units"]))
+            if model_fix:
+                row["detail"] = f"${b_usd:,.3f} → ${a_usd:,.3f} per {after['unit']} ({b_tok:,.0f} → {a_tok:,.0f} tokens)"
+            else:
+                row["detail"] = f"{b_tok:,.0f} → {a_tok:,.0f} tokens per {after['unit']}"
+            if b_usd and a_usd > b_usd * (1 + WORSE_MARGIN):
+                row["status"] = "made it worse"
+                row["detail"] += ". Cost went up since this fix; consider reverting it."
         out.append(row)
     return out

@@ -56,7 +56,10 @@ burnlens doesn't stop at charts. It recommends specific changes, applies them wi
 | MCP tools with huge results | `browser_snapshot` averaging 17k tokens per call | A `CLAUDE.md` line preferring narrower calls |
 | Oversized `CLAUDE.md` | 3k tokens on every request | Claude proposes a trimmed version as a diff |
 | Unused MCP servers | Configured, never called in 30 days | `claude mcp remove …` / disable in project settings |
-| Subagents on expensive models | Explore agents on Opus | Run them on Sonnet |
+| Model fit for each role | Explore agents on Opus; a code reviewer on Sonnet | Bulk reading and routine implementation → Sonnet; planning and review → your strongest model (costs more, labelled *quality*) |
+| Planning and implementing on Opus | Opus sessions that plan, then write code | `/model opusplan`: Opus in plan mode, Sonnet for implementation |
+
+Model advice follows the role, not just the price. A better plan saves more in implementation than it costs, so planning and review agents are never pushed to a cheaper model. Model switches are measured by **cost per run**, not per token: if a cheaper model needs more turns and ends up costing more, `/burnlens-savings` reports that the fix *made it worse*.
 
 Each recommendation shows a projected monthly saving and how far to trust it. **Measured** means cost that already happened and the fix removes. **Estimated** depends on a stated assumption, e.g. "output shrinks 60%". Unused MCP servers are **not quantifiable**. When you apply a fix, burnlens records a baseline in `~/.burnlens/fixes.json`. Once there are a few sessions of new usage, `/burnlens-savings` compares against it: tokens per session (or per call) before and after, times the usage since. The dashboard shows both lists too.
 

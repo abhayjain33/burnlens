@@ -94,7 +94,7 @@ tr.child td { color: var(--ink-2); } tr.child td:first-child { padding-left: 28p
 .fix-total .small { color: var(--muted); font-size: 12px; }
 .fix-evidence { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .conf { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
-.conf.measured { border-color: var(--good); } .conf.estimated { border-color: var(--warning); }
+.conf.measured { border-color: var(--good); } .conf.estimated { border-color: var(--warning); } .conf.quality { border-color: var(--s1); }
 .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); margin-left: 6px; font-family: system-ui, sans-serif; }
 .inbar { position: relative; min-width: 120px; }
 .inbar .track { height: 8px; border-radius: 0 4px 4px 0; background: var(--bar); }
@@ -651,7 +651,7 @@ function fixesSection() {
   $("#fixesCard").hidden = false;
   const total = sum(recs, (r) => r.usd_30d), measured = sum(saved, (r) => (r.status === "measured" ? r.saved_usd : 0));
   $("#fixesDesc").textContent = recs.length
-    ? "Specific changes that cut waste found in your last 30 days. Apply them with /burnlens-fix in Claude Code; you approve each edit."
+    ? "Specific changes found in your last 30 days. Model advice depends on the role: planning and review stay on your strongest model, bulk reading and routine implementation move to cheaper ones. Apply with /burnlens-fix in Claude Code; you approve each edit."
     : "No open recommendations right now.";
   $("#fixesTotal").replaceChildren(el("div", { class: "big" }, recs.length ? "~" + fmtUsd(total) + "/mo" : fmtUsd(measured)),
     el("div", { class: "small" }, recs.length ? `potential, from ${recs.length} fix${recs.length === 1 ? "" : "es"}` : "saved so far"));
@@ -668,7 +668,8 @@ function fixesSection() {
   $("#fixesTable").replaceChildren(head, ...(recs.length ? recs.slice(0, 10).map((r, i) => el("tr", {},
     el("td", { class: "rank" }, i + 1),
     el("td", {}, el("div", {}, r.title), el("div", { class: "fix-evidence" }, (r.detail || "").split("\n").slice(0, 2).join(" ").trim().slice(0, 160))),
-    el("td", { class: "num" }, r.usd_30d == null ? "–" : "~" + fmtUsd(r.usd_30d)),
+    el("td", { class: "num" }, r.extra_usd_30d != null ? el("span", { title: "Costs more; worth it for planning and review quality" }, "+" + fmtUsd(r.extra_usd_30d))
+      : r.usd_30d == null ? "–" : "~" + fmtUsd(r.usd_30d)),
     el("td", {}, el("span", { class: "conf " + r.confidence }, r.confidence)),
     el("td", { class: "hide-sm name", style: "font-size:12px" }, how(r.action))))
     : [el("tr", {}, el("td", { colspan: 5, class: "empty" }, "Nothing to fix right now."))]),

@@ -96,6 +96,71 @@ class FixesTest(unittest.TestCase):
         self.assertEqual(len(rec), 1)
         self.assertGreater(rec[0]["usd_30d"], 0)
 
+    def model_recs(self):
+        return {(r["kind"], r["metric"].get("agent")): r for r in fixes.recommend(self.data)
+                if r["kind"] in ("subagent_model", "reasoning_model")}
+
+    def test_planning_agents_are_never_told_to_downgrade(self):
+        for agent in ("Plan", "code-reviewer", "architect"):
+            self.session(1, agent=agent, calls=60)
+            self.session(2, agent=agent, calls=60)
+        self.assertEqual(self.model_recs(), {})
+
+    def test_planning_agent_on_cheap_model_is_told_to_upgrade(self):
+        self.session(1, agent="Plan", calls=30, model="claude-sonnet-5")
+        self.session(2, agent="Plan", calls=30, model="claude-sonnet-5")
+        rec = self.model_recs()[("reasoning_model", "Plan")]
+        self.assertIsNone(rec["usd_30d"])
+        self.assertGreater(rec["extra_usd_30d"], 0)
+        self.assertIn("model: opus", rec["action"]["prompt"])
+
+    def test_general_purpose_only_when_it_implements(self):
+        self.session(1, agent="general-purpose", calls=60)  # category Development
+        self.assertIn(("subagent_model", "general-purpose"), self.model_recs())
+        for c in self.data["calls"]:
+            c["c"] = "Analysis"
+        self.assertEqual(self.model_recs(), {})
+
+    def test_builtin_agent_advice_avoids_global_subagent_override(self):
+        self.session(1, agent="Explore", calls=60)
+        rec = self.model_recs()[("subagent_model", "Explore")]
+        self.assertIn("Do not set CLAUDE_CODE_SUBAGENT_MODEL", rec["action"]["prompt"])
+
+    def test_mixed_model_agent_counts_only_expensive_runs(self):
+        # runs already on cheap models must not cancel out the saving on the Opus runs
+        for d in (1, 2):
+            self.session(d, agent="Explore", calls=60)
+        for d in (1, 2, 3, 4):
+            self.session(d, agent="Explore", calls=200, model="claude-haiku-4-5")
+        rec = self.model_recs()[("subagent_model", "Explore")]
+        self.assertIn("2 of 6 runs", rec["detail"])
+        self.assertGreater(rec["usd_30d"], 0)
+
+    def test_opusplan_for_plan_then_implement_on_opus(self):
+        for d in (1, 2, 3):
+            s = self.session(d, calls=40)
+            self.tool(s, d, "Edit", 200, path=os.path.join(self.proj, "src", "a.ts"))
+        rec = [r for r in fixes.recommend(self.data) if r["kind"] == "plan_then_implement"]
+        self.assertEqual(len(rec), 1)
+        self.assertEqual(rec[0]["action"]["command"], "/model opusplan")
+
+    def test_no_opusplan_when_already_on_sonnet(self):
+        for d in (1, 2, 3):
+            s = self.session(d, calls=40, model="claude-sonnet-5")
+            self.tool(s, d, "Edit", 200, path=os.path.join(self.proj, "src", "a.ts"))
+        self.assertNotIn("plan_then_implement", self.kinds(fixes.recommend(self.data)))
+
+    def test_model_switch_that_costs_more_per_run_is_flagged(self):
+        for d in (10, 8, 6):
+            self.session(d, agent="Explore", calls=40)  # $0.80 per run
+        rec = self.model_recs()[("subagent_model", "Explore")]
+        fixes.mark_applied(self.data, rec)
+        for _ in range(3):  # cheaper model, but it needed 3x the turns: $2.40 per run
+            self.session(0, agent="Explore", calls=120, model="claude-sonnet-5")
+        row = fixes.savings(self.data)[0]
+        self.assertEqual(row["status"], "made it worse")
+        self.assertLess(row["saved_usd"], 0)
+
     def test_applied_fix_is_measured_against_baseline(self):
         lock = os.path.join(self.proj, "yarn.lock")
         for d in (20, 18, 15):  # before: every session reads the lockfile

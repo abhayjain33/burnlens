@@ -99,7 +99,10 @@ def connect_main(argv):
 
 
 def _fmt_rec(i, r):
-    money = f"~${r['usd_30d']:,.2f}/mo" if r["usd_30d"] is not None else "saving not quantifiable"
+    if r.get("extra_usd_30d") is not None:
+        money = f"costs ~${r['extra_usd_30d']:,.2f}/mo more, for better results"
+    else:
+        money = f"~${r['usd_30d']:,.2f}/mo" if r["usd_30d"] is not None else "saving not quantifiable"
     toks = f", ~{_tok(r['tokens_30d'])} tokens/mo" if r.get("tokens_30d") else ""
     lines = [f"{i}. [{r['id']}] {r['title']}", f"   {money}{toks} ({r['confidence']})"]
     lines += ["   " + ln for ln in r["detail"].splitlines()]
