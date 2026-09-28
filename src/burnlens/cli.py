@@ -120,7 +120,15 @@ def fixes_main(argv):
     ap.add_argument("--days", type=int, default=30, help="history window to analyse (default 30)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--root", help="transcripts dir")
+    ap.add_argument("--demo", action="store_true", help="recommendations for synthetic data (nothing is recorded)")
     args = ap.parse_args(argv)
+    if args.demo:
+        if args.action != "list":
+            print("--demo only lists example recommendations; nothing is applied or recorded.")
+            return 1
+        recs = fixes.recommend(demo.generate(), args.days, local=False)
+        print(json.dumps(recs, indent=2) if args.json else "\n\n".join(_fmt_rec(i + 1, r) for i, r in enumerate(recs[:8])))
+        return 0
     data = parser.load(args.root)
     if args.action == "dismiss":
         fixes.dismiss(args.id)

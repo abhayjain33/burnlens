@@ -1,6 +1,6 @@
 ---
 description: Find fixes that cut your Claude Code token usage, apply the ones you pick, and track what they save
-argument-hint: "[--days N]"
+argument-hint: "[--days N] [--demo]"
 allowed-tools: Bash(bash:*), Read, Glob
 ---
 
@@ -10,7 +10,9 @@ burnlens recommendations (JSON list):
 
 Work through these with the user:
 
-1. If the output above is not a JSON list, it's an error: explain it in plain words and stop. If the list is empty, say there is nothing to fix right now, mention `/burnlens-savings` for fixes applied earlier, and stop.
+1. If the arguments include `--demo`, these are example recommendations for synthetic data: show them as in step 2, say they're examples, and don't apply or record anything.
+
+   If the output above is not a JSON list, it's an error: explain it in plain words and stop. If the list is empty, say there is nothing to fix right now, mention `/burnlens-savings` for fixes applied earlier, and stop.
 
 2. Show at most 8 recommendations, in the order given, as a numbered list. For each: the title; the saving as `~$X/month` (or "saving not quantifiable" when `usd_30d` is null) with its `confidence`; one line of evidence from `detail`; and one line saying what the fix changes. Then ask which to apply: numbers, "all", or "none". Wait for the answer.
 
